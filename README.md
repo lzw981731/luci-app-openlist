@@ -34,9 +34,9 @@
 
   *2. get luci-app-openlist code & building*
   ```shell
-  git clone https://github.com/sbwml/luci-app-openlist2 package/openlist
-  make menuconfig # choose LUCI -> Applications -> luci-app-openlist2
-  make package/openlist/luci-app-openlist2/compile V=s # build luci-app-openlist2
+  git clone https://github.com/lzw981731/luci-app-openlist package/openlist
+  make menuconfig # choose LUCI -> Applications -> luci-app-openlist
+  make package/openlist/luci-app-openlist/compile V=s # build luci-app-openlist
   ```
 
 --------------
@@ -58,12 +58,7 @@
 
 - Execute install script (Multi-architecture support)
   ```shell
-  sh -c "$(curl -ksS https://raw.githubusercontent.com/sbwml/luci-app-openlist2/main/install.sh)"
-  ```
-
-  install via ghproxy:
-  ```shell
-  sh -c "$(curl -ksS https://api.cooluc.com/openlist/install.sh)" _ gh_proxy="https://gh.cooluc.com"
+  sh -c "$(curl -ksS https://raw.githubusercontent.com/lzw981731/luci-app-openlist/main/install.sh)"
   ```
 
 --------------
