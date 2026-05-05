@@ -1,0 +1,76 @@
+#!/bin/sh
+# OpenList UI UCI defaults
+
+# Create basic UCI configuration only if not exists
+if ! uci -q get openlistui.main >/dev/null 2>&1; then
+	uci -q set openlistui.main=openlistui 2>/dev/null || true
+	uci -q set openlistui.main.enabled='1' 2>/dev/null || true
+	uci -q set openlistui.main.port='5244' 2>/dev/null || true
+	uci -q set openlistui.main.data_dir='/etc/openlistui' 2>/dev/null || true
+	uci -q set openlistui.main.auto_start='0' 2>/dev/null || true
+	uci -q set openlistui.main.enable_https='0' 2>/dev/null || true
+	uci -q set openlistui.main.https_port='5443' 2>/dev/null || true
+	uci -q set openlistui.main.force_https='0' 2>/dev/null || true
+fi
+
+if ! uci -q get openlistui.integration >/dev/null 2>&1; then
+	uci -q set openlistui.integration=openlistui 2>/dev/null || true
+	uci -q set openlistui.integration.kernel_save_path='/tmp/openlist' 2>/dev/null || true
+fi
+
+# Ensure required options exist without overwriting existing values
+if ! uci -q get openlistui.main.enabled >/dev/null 2>&1; then
+	uci -q set openlistui.main.enabled='1' 2>/dev/null || true
+fi
+
+if ! uci -q get openlistui.main.port >/dev/null 2>&1; then
+	uci -q set openlistui.main.port='5244' 2>/dev/null || true
+fi
+
+if ! uci -q get openlistui.main.data_dir >/dev/null 2>&1; then
+	uci -q set openlistui.main.data_dir='/etc/openlistui' 2>/dev/null || true
+fi
+
+if ! uci -q get openlistui.main.auto_start >/dev/null 2>&1; then
+	uci -q set openlistui.main.auto_start='0' 2>/dev/null || true
+fi
+
+if ! uci -q get openlistui.main.cors_enabled >/dev/null 2>&1; then
+	uci -q set openlistui.main.cors_enabled='0' 2>/dev/null || true
+fi
+
+if ! uci -q get openlistui.main.enable_https >/dev/null 2>&1; then
+	uci -q set openlistui.main.enable_https='0' 2>/dev/null || true
+fi
+
+if ! uci -q get openlistui.main.https_port >/dev/null 2>&1; then
+	uci -q set openlistui.main.https_port='5443' 2>/dev/null || true
+fi
+
+if ! uci -q get openlistui.main.force_https >/dev/null 2>&1; then
+	uci -q set openlistui.main.force_https='0' 2>/dev/null || true
+fi
+
+if ! uci -q get openlistui.integration.kernel_save_path >/dev/null 2>&1; then
+	uci -q set openlistui.integration.kernel_save_path='/tmp/openlist' 2>/dev/null || true
+fi
+
+uci -q commit openlistui 2>/dev/null || true
+
+# Create directories
+mkdir -p /etc/openlistui
+mkdir -p /tmp/openlist
+
+# Set permissions
+chmod 755 /etc/openlistui
+chmod 755 /tmp/openlist
+
+# Enable service if available
+if [ -x /etc/init.d/openlistui ]; then
+	/etc/init.d/openlistui enable
+fi
+
+# Remove this script to prevent re-execution
+rm -f "$0"
+
+exit 0

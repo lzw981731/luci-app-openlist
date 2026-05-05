@@ -1,0 +1,11 @@
+{
+	"luci-app-openlistui": {
+		"description": "Grant access to OpenList UI",
+		"read": {
+			"uci": [ "openlistui" ]
+		},
+		"write": {
+			"uci": [ "openlistui" ]
+		}
+	}
+}

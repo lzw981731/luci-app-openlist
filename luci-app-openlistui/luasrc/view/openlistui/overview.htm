@@ -1,0 +1,1495 @@
+<%#<!--
+Copyright 2025 Drfccv
+Licensed under the MIT License
+-->%>
+
+<%+header%>
+
+<div class="dashboard-container">
+    <!-- Main Dashboard Container -->
+    <div class="main-container">
+        <div class="dashboard-grid">
+            <!-- Overview Header Card -->
+            <div class="dashboard-card overview-header-card">
+                <div class="card-content">
+                    <h1 class="overview-title"><%:OpenList Overview%></h1>
+                    <p class="overview-subtitle"><%:Manage your OpenList services and monitor performance%></p>
+                </div>
+            </div>
+            <!-- Core Management Card -->
+            <div class="dashboard-card">
+                <div class="card-content">
+                    <h2 class="card-title"><%:Core Management%></h2>
+                    <div class="sections-container">
+                        <!-- OpenList Core Section -->
+                        <div class="section">
+                            <h3><%:OpenList Core%></h3>
+                            <div class="status-main">
+                                <div class="status-row">
+                                    <span class="status-label"><%:Status%>:</span>
+                                    <span id="core-status" class="status offline"><%:Stopped%></span>
+                                </div>
+                                <div class="status-row">
+                                    <span class="status-label"><%:Port%>:</span>
+                                    <span id="core-port" class="detail">-</span>
+                                </div>
+                                <div class="status-row">
+                                    <span class="status-label"><%:Version%>:</span>
+                                    <span id="core-version" class="detail">v1.2.3</span>
+                                </div>
+                            </div>
+                            <div class="buttons">
+                                <button id="start-core-btn" class="btn primary" onclick="toggleCore()"><%:Start Core%></button>
+                                <button id="restart-core-btn" class="btn secondary" onclick="restartCore()" disabled><%:Restart%></button>
+                                <button id="webui-btn" class="btn info" onclick="openWebUI()" disabled><%:Web Interface%></button>
+                            </div>
+                        </div>
+                        
+
+                        
+                        <!-- Quick Settings Section -->
+                        <div class="section">
+                            <h3><%:Quick Settings%></h3>
+                            <div class="settings">
+                                <label class="checkbox-label">
+                                    <input type="checkbox" id="allow-external-access" onchange="toggleExternalAccess()">
+                                    <span><%:Allow External Access%></span>
+                                </label>
+                                <label class="checkbox-label">
+                                    <input type="checkbox" id="auto-start-boot" onchange="toggleAutoStartBoot()">
+                                    <span><%:Auto Start on Boot%></span>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        
+        <!-- Core Monitor Card -->
+        <div class="dashboard-card">
+            <div class="card-content">
+                <h2 class="card-title"><%:Core Monitor%></h2>
+                <div class="metrics">
+                    <div class="metric">
+                        <div class="metric-label"><%:CPU Usage%></div>
+                        <div class="metric-value" id="cpu-usage">-</div>
+                    </div>
+                    <div class="metric">
+                        <div class="metric-label"><%:Memory%></div>
+                        <div class="metric-value" id="memory-usage">-</div>
+                    </div>
+                    <div class="metric">
+                        <div class="metric-label"><%:Uptime%></div>
+                        <div class="metric-value" id="uptime">-</div>
+                    </div>
+                </div>
+                
+                <div class="chart-section">
+                    <canvas id="performance-chart"></canvas>
+                    <div id="chart-placeholder" class="placeholder">
+                        <%:No data - Service not running%>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Documentation Card -->
+        <div class="dashboard-card documentation-card">
+            <div class="card-content">
+                <h2 class="card-title"><%:Documentation%></h2>
+                <div class="doc-layout">
+                    <div class="doc-section">
+                        <h3><%:OpenList%></h3>
+                        <div class="doc-links">
+                            <a href="https://doc.oplist.org/" target="_blank" class="doc-link"><%:Documentation%></a>
+                            <a href="https://github.com/OpenListTeam/OpenList" target="_blank" class="doc-link"><%:GitHub%></a>
+                        </div>
+                    </div>
+                    
+                    <div class="doc-section">
+                        <h3><%:OpenListUI%></h3>
+                        <div class="doc-links">
+                            <a href="https://github.com/drfccv/luci-app-openlistui" target="_blank" class="doc-link"><%:GitHub%></a>
+                            <a href="https://github.com/drfccv/luci-app-openlistui/issues" target="_blank" class="doc-link"><%:Report Issue%></a>
+                        </div>
+                    </div>
+
+                </div>
+                
+                <div class="doc-section quick-section">
+                    <h3><%:Quick Links%></h3>
+                    <div class="quick-links">
+                        <button class="link-btn" onclick="showApiDocs()"><%:API Documentation%></button>
+                        <button class="link-btn" onclick="showFAQ()"><%:FAQ%></button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Notification Area -->
+    <div id="notifications" class="notifications"></div>
+</div>
+
+<script>
+let services = {
+    core: { running: false, port: 5244, version: 'Unknown', pid: null, uptime: '-', memory: '-', cpu: '-' }
+};
+
+
+
+let chart = null;
+let chartData = {
+    cpu: [],
+    memory: [],
+    time: []
+};
+
+// Update core status from API
+function updateCoreStatus() {
+    const xhr = new XMLHttpRequest();
+    xhr.open('GET', '<%=luci.dispatcher.build_url("admin", "services", "openlistui", "status")%>', true);
+    xhr.onreadystatechange = function() {
+        if (xhr.readyState === 4) {
+            if (xhr.status === 200) {
+                const result = xhr.responseText;
+                try {
+                    const response = typeof result === 'string' ? JSON.parse(result) : result;
+                    if (response) {
+                        services.core.running = response.running || false;
+                        services.core.port = response.port || 5244;
+                        services.core.version = response.version || 'Unknown';
+                        services.core.pid = response.pid || null;
+                        services.core.uptime = response.uptime || '-';
+                        services.core.memory = response.memory || '-';
+                        services.core.cpu = response.cpu || '-';
+                        
+                        updateDisplay();
+                    }
+                } catch (e) {
+                    console.error('Failed to parse status response:', e, 'Response:', result);
+                }
+            } else {
+                console.error('Status API error:', xhr.status, xhr.statusText);
+            }
+        }
+    };
+    xhr.send();
+}
+
+
+
+
+
+// Initialize
+document.addEventListener('DOMContentLoaded', function() {
+    loadSettings();
+    initChart();
+    updateCoreStatus(); // Load initial status
+
+    
+    // Update every 3 seconds for more responsive status detection
+    setInterval(function() {
+        updateCoreStatus();
+        updateChart();
+    }, 3000);
+    
+    // Update chart every 2 seconds when service is running
+    setInterval(updateChart, 2000);
+    
+    // Handle window resize
+    window.addEventListener('resize', () => {
+        setTimeout(() => {
+            initChart();
+            updateChart();
+        }, 100);
+    });
+});
+
+// Core service management
+function toggleCore() {
+    const btn = document.getElementById('start-core-btn');
+    const statusElement = document.getElementById('core-status');
+    const isRunning = statusElement.classList.contains('online');
+    
+    btn.disabled = true;
+    btn.textContent = '<%:Please wait...%>';
+    
+    // Call actual API endpoint
+    const action = isRunning ? 'stop' : 'start';
+    console.log('Calling API:', action);
+    
+    const xhr = new XMLHttpRequest();
+    xhr.open('GET', '<%=luci.dispatcher.build_url("admin", "services", "openlistui")%>/' + action, true);
+    xhr.onreadystatechange = function() {
+        if (xhr.readyState === 4 && xhr.status === 200) {
+            const result = xhr.responseText;
+            const x = xhr;
+            console.log('API Response:', x.status, result);
+            
+            try {
+            // Log raw response for debugging
+            console.log('Raw response:', typeof result, result);
+            
+            const response = typeof result === 'string' ? JSON.parse(result) : result;
+            console.log('Parsed response:', response);
+            
+            if (response && response.success) {
+                showNotification(isRunning ? '<%:Core stopped%>' : '<%:Core started%>', 'success');
+                // Refresh status immediately and again after a short delay
+                updateCoreStatus();
+                setTimeout(updateCoreStatus, 1000);
+                setTimeout(updateCoreStatus, 3000);
+            } else {
+                let errorMessage = response.message || 'Unknown error';
+                let debugInfo = response.debug || '';
+                
+                console.log('Error message:', errorMessage);
+                console.log('Debug info:', debugInfo);
+                
+                if (errorMessage.includes('binary not found') || errorMessage.includes('Please install OpenList first')) {
+                    showNotification('<%:OpenList not installed%>. <%:Please go to Updates page to install OpenList first%>.', 'warning');
+                    // Optionally redirect to updates page
+                    setTimeout(() => {
+                        if (confirm('<%:Would you like to go to the Updates page to install OpenList?%>')) {
+                            window.location.href = '<%=luci.dispatcher.build_url("admin", "services", "openlistui", "updates")%>';
+                        }
+                    }, 2000);
+                } else {
+                    let fullErrorMessage = '<%:Operation failed%>: ' + errorMessage;
+                    if (debugInfo) {
+                        fullErrorMessage += ' (Debug: ' + debugInfo + ')';
+                    }
+                    showNotification(fullErrorMessage, 'error');
+                }
+            }
+        } catch (e) {
+            console.error('JSON parse error:', e);
+            console.log('Response that failed to parse:', result);
+            showNotification('<%:Operation failed%>: Invalid response - ' + (result || 'empty response'), 'error');
+        }
+        }
+        btn.disabled = false;
+        btn.textContent = isRunning ? '<%:Start Core%>' : '<%:Stop Core%>';
+    };
+    xhr.send();
+}
+
+function restartCore() {
+    showNotification('<%:Restarting core...%>', 'info');
+    const btn = document.getElementById('restart-core-btn');
+    btn.disabled = true;
+    
+    const xhr = new XMLHttpRequest();
+    xhr.open('GET', '<%=luci.dispatcher.build_url("admin", "services", "openlistui", "restart")%>', true);
+    xhr.onreadystatechange = function() {
+        if (xhr.readyState === 4 && xhr.status === 200) {
+            const result = xhr.responseText;
+            try {
+            const response = typeof result === 'string' ? JSON.parse(result) : result;
+            if (response && response.success) {
+                showNotification('<%:Core restarted successfully%>', 'success');
+                // Refresh status multiple times to catch the restart process
+                setTimeout(updateCoreStatus, 1000);
+                setTimeout(updateCoreStatus, 3000);
+                setTimeout(updateCoreStatus, 5000);
+            } else {
+                showNotification('<%:Restart failed%>: ' + (response.message || 'Unknown error'), 'error');
+            }
+        } catch (e) {
+            showNotification('<%:Restart failed%>: Invalid response', 'error');
+        }
+        }
+        btn.disabled = false;
+    };
+    xhr.send();
+}
+
+function openWebUI() {
+    if (services.core.running) {
+        window.open(`http://${location.hostname}:${services.core.port}`, '_blank');
+    }
+}
+
+
+
+
+
+// Settings
+function toggleExternalAccess() {
+    const allowExternal = document.getElementById('allow-external-access').checked;
+    
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', '<%=luci.dispatcher.build_url("admin", "services", "openlistui", "settings_save")%>', true);
+    xhr.setRequestHeader('Content-Type', 'application/json');
+    
+    xhr.onreadystatechange = function() {
+        if (xhr.readyState === 4) {
+            if (xhr.status === 200) {
+                showNotification('<%:External access setting updated%>', 'success');
+            } else {
+                showNotification('<%:Failed to update external access setting%>', 'error');
+                // Revert checkbox state on error
+                document.getElementById('allow-external-access').checked = !allowExternal;
+            }
+        }
+    };
+    
+    const data = {
+        config: {
+            main: {
+                cors_enabled: allowExternal ? "1" : "0"
+            }
+        }
+    };
+    
+    xhr.send(JSON.stringify(data));
+}
+
+function toggleAutoStartBoot() {
+    const autoStartBoot = document.getElementById('auto-start-boot').checked;
+    
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', '<%=luci.dispatcher.build_url("admin", "services", "openlistui", "settings_save")%>', true);
+    xhr.setRequestHeader('Content-Type', 'application/json');
+    
+    xhr.onreadystatechange = function() {
+        if (xhr.readyState === 4) {
+            if (xhr.status === 200) {
+                showNotification('<%:Auto start setting updated%>', 'success');
+            } else {
+                showNotification('<%:Failed to update auto start setting%>', 'error');
+                // Revert checkbox state on error
+                document.getElementById('auto-start-boot').checked = !autoStartBoot;
+            }
+        }
+    };
+    
+    const data = {
+        config: {
+            main: {
+                auto_start: autoStartBoot ? "1" : "0"
+            }
+        }
+    };
+    
+    xhr.send(JSON.stringify(data));
+}
+
+function loadSettings() {
+    // Load settings from backend
+    const xhr = new XMLHttpRequest();
+    xhr.open('GET', '<%=luci.dispatcher.build_url("admin", "services", "openlistui", "settings_get")%>', true);
+    
+    xhr.onreadystatechange = function() {
+        if (xhr.readyState === 4 && xhr.status === 200) {
+            try {
+                const response = JSON.parse(xhr.responseText);
+                if (response.config && response.config.main) {
+                    document.getElementById('allow-external-access').checked = response.config.main.cors_enabled === "1";
+                    document.getElementById('auto-start-boot').checked = response.config.main.auto_start === "1";
+                }
+            } catch (e) {
+                console.log('Failed to load settings:', e);
+            }
+        }
+    };
+    
+    xhr.send();
+}
+
+// Documentation functions
+function showApiDocs() {
+    window.open('https://openlist.apifox.cn/', '_blank');
+}
+
+
+
+function reportIssue() {
+    window.open('https://github.com/OpenListTeam/OpenList/issues', '_blank');
+}
+
+function showFAQ() {
+    window.open('https://doc.oplist.org/faq/why', '_blank');
+}
+
+// Modal system
+function showModal(title, content) {
+    const modal = document.createElement('div');
+    modal.className = 'modal';
+    modal.style.display = 'flex'; // 确保显示时使用 flex 布局
+    modal.innerHTML = `
+        <div class="modal-dialog">
+            <div class="modal-header">
+                <h3>${title}</h3>
+                <button onclick="this.closest('.modal').remove()" class="close-btn">×</button>
+            </div>
+            <div class="modal-body">${content}</div>
+        </div>
+    `;
+    
+    document.body.appendChild(modal);
+    
+    modal.addEventListener('click', (e) => {
+        if (e.target === modal) modal.remove();
+    });
+}
+
+// Notifications
+function showNotification(message, type = 'info') {
+    const notification = document.createElement('div');
+    notification.className = `notification ${type}`;
+    notification.innerHTML = `
+        <span>${message}</span>
+        <button onclick="this.parentElement.remove()" class="close">×</button>
+    `;
+    
+    document.getElementById('notifications').appendChild(notification);
+    
+    setTimeout(() => {
+        if (notification.parentElement) {
+            notification.remove();
+        }
+    }, 4000);
+}
+
+// Update display
+function updateDisplay() {
+    // Core service
+    const coreStatus = document.getElementById('core-status');
+    const corePort = document.getElementById('core-port');
+    const coreVersion = document.getElementById('core-version');
+    const startCoreBtn = document.getElementById('start-core-btn');
+    const restartCoreBtn = document.getElementById('restart-core-btn');
+    const webuiBtn = document.getElementById('webui-btn');
+    
+    // Update version display
+    if (coreVersion) {
+        coreVersion.textContent = services.core.version || 'Unknown';
+    }
+    
+    if (services.core.running) {
+        coreStatus.textContent = '<%:Running%>';
+        coreStatus.className = 'status running online';
+        corePort.textContent = services.core.port;
+        startCoreBtn.textContent = '<%:Stop Core%>';
+        startCoreBtn.className = 'btn danger';
+        restartCoreBtn.disabled = false;
+        webuiBtn.disabled = false;
+    } else {
+        // Check if OpenList is installed (version is available and not "Not installed")
+        if (services.core.version === 'Not installed' || services.core.version === 'Unknown') {
+            coreStatus.textContent = '<%:Not Installed%>';
+            coreStatus.className = 'status error';
+            corePort.textContent = '-';
+            startCoreBtn.textContent = '<%:Install OpenList%>';
+            startCoreBtn.className = 'btn info';
+            startCoreBtn.onclick = function() {
+                window.location.href = '<%=luci.dispatcher.build_url("admin", "services", "openlistui", "updates")%>';
+            };
+            restartCoreBtn.disabled = true;
+            webuiBtn.disabled = true;
+        } else {
+            coreStatus.textContent = '<%:Stopped%>';
+            coreStatus.className = 'status offline';
+            corePort.textContent = '-';
+            startCoreBtn.textContent = '<%:Start Core%>';
+            startCoreBtn.className = 'btn primary';
+            startCoreBtn.onclick = toggleCore; // Restore original onclick
+            restartCoreBtn.disabled = true;
+            webuiBtn.disabled = true;
+        }
+    }
+    startCoreBtn.disabled = false;
+    
+
+    
+    // Performance metrics - OpenList data
+    let totalCpu = 0;
+    let totalMemory = 0;
+    let hasData = false;
+    
+    // Add OpenList metrics
+    if (services.core.running) {
+        const cpu = parseFloat(services.core.cpu) || 0;
+        const memory = parseFloat(services.core.memory) || 0;
+        totalCpu += cpu;
+        totalMemory += memory;
+        if (cpu > 0 || memory > 0) hasData = true;
+        console.log('OpenList metrics:', { cpu, memory, running: services.core.running });
+    }
+    
+
+    
+    // Always show data if any service is running
+    if (services.core.running) {
+        // Convert memory from KB to MB (backend now returns KB)
+        const memoryMB = totalMemory > 0 ? Math.round(totalMemory / 1024) : 0;
+        const uptime = services.core.uptime || '-';
+        
+        // Show actual data if available, otherwise show loading state
+        if (hasData || totalCpu > 0 || totalMemory > 0) {
+            document.getElementById('cpu-usage').textContent = `${totalCpu.toFixed(1)}%`;
+            document.getElementById('memory-usage').textContent = `${memoryMB}MB`;
+        } else {
+            document.getElementById('cpu-usage').textContent = '加载中...';
+            document.getElementById('memory-usage').textContent = '加载中...';
+        }
+        document.getElementById('uptime').textContent = uptime;
+        
+        console.log('Display metrics:', { totalCpu, totalMemory: memoryMB, uptime });
+    } else {
+        document.getElementById('cpu-usage').textContent = '服务未运行';
+        document.getElementById('memory-usage').textContent = '服务未运行';
+        document.getElementById('uptime').textContent = '服务未运行';
+    }
+    
+
+}
+
+// Chart management
+function initChart() {
+    const canvas = document.getElementById('performance-chart');
+    const placeholder = document.getElementById('chart-placeholder');
+    const ctx = canvas.getContext('2d');
+    
+    // Get container size
+    const container = canvas.parentElement;
+    const containerRect = container.getBoundingClientRect();
+    const width = containerRect.width - 20; // Account for padding
+    const height = containerRect.height - 20;
+    
+    // High DPI support
+    const dpr = window.devicePixelRatio || 1;
+    
+    canvas.width = width * dpr;
+    canvas.height = height * dpr;
+    
+    ctx.scale(dpr, dpr);
+    
+    canvas.style.width = width + 'px';
+    canvas.style.height = height + 'px';
+    
+    if (!services.core.running) {
+        canvas.style.display = 'none';
+        placeholder.style.display = 'flex';
+    } else {
+        canvas.style.display = 'block';
+        placeholder.style.display = 'none';
+    }
+}
+
+function updateChart() {
+    const canvas = document.getElementById('performance-chart');
+    const placeholder = document.getElementById('chart-placeholder');
+    
+    if (!services.core.running) {
+        canvas.style.display = 'none';
+        placeholder.style.display = 'flex';
+        return;
+    }
+    
+    canvas.style.display = 'block';
+    placeholder.style.display = 'none';
+    
+    const ctx = canvas.getContext('2d');
+    const width = parseInt(canvas.style.width) || canvas.width;
+    const height = parseInt(canvas.style.height) || canvas.height;
+    
+    // Add new data point - use real data
+    let totalCpu = 0;
+    let totalMemory = 0;
+    
+    // OpenList data
+    if (services.core.running && services.core.cpu && services.core.memory) {
+        totalCpu += parseFloat(services.core.cpu) || 0;
+        totalMemory += parseFloat(services.core.memory) || 0;
+    }
+    
+
+    
+    // Convert memory from KB to MB for chart display
+    // For chart, show memory in MB (divide KB by 1024)
+    const memoryMB = totalMemory / 1024;
+    const memoryPercent = Math.min((memoryMB / 1024) * 100, 100); // Assuming max 1GB = 100%
+    
+    chartData.cpu.push(totalCpu);
+    chartData.memory.push(memoryPercent);
+    
+    // Keep only last 50 points
+    if (chartData.cpu.length > 50) {
+        chartData.cpu.shift();
+        chartData.memory.shift();
+    }
+    
+    // Clear canvas
+    ctx.clearRect(0, 0, width, height);
+    
+    // Define chart area (leave space for labels and legend)
+    const chartMargin = { top: 20, right: 20, bottom: 40, left: 50 };
+    const chartWidth = width - chartMargin.left - chartMargin.right;
+    const chartHeight = height - chartMargin.top - chartMargin.bottom;
+    
+    // Draw background
+    ctx.fillStyle = '#fafafa';
+    ctx.fillRect(chartMargin.left, chartMargin.top, chartWidth, chartHeight);
+    
+    // Draw grid lines and Y-axis labels
+    ctx.strokeStyle = '#e0e0e0';
+    ctx.lineWidth = 1;
+    ctx.fillStyle = '#666';
+    ctx.font = '11px Arial';
+    ctx.textAlign = 'right';
+    
+    for (let i = 0; i <= 4; i++) {
+        const y = chartMargin.top + (chartHeight / 4) * i;
+        const value = 100 - (i * 25);
+        
+        // Grid line
+        ctx.beginPath();
+        ctx.moveTo(chartMargin.left, y);
+        ctx.lineTo(chartMargin.left + chartWidth, y);
+        ctx.stroke();
+        
+        // Y-axis label
+        ctx.fillText(value + '%', chartMargin.left - 5, y + 4);
+    }
+    
+    // Draw vertical grid lines
+    const timeSteps = 5;
+    for (let i = 0; i <= timeSteps; i++) {
+        const x = chartMargin.left + (chartWidth / timeSteps) * i;
+        ctx.beginPath();
+        ctx.moveTo(x, chartMargin.top);
+        ctx.lineTo(x, chartMargin.top + chartHeight);
+        ctx.stroke();
+    }
+    
+    // Draw chart border
+    ctx.strokeStyle = '#ccc';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(chartMargin.left, chartMargin.top, chartWidth, chartHeight);
+    
+    // Draw data lines
+    drawLineWithMargin(ctx, chartData.cpu, '#007cba', chartMargin, chartWidth, chartHeight);
+    drawLineWithMargin(ctx, chartData.memory, '#dc3545', chartMargin, chartWidth, chartHeight);
+    
+    // Draw legend
+    drawLegend(ctx, width, height, chartMargin);
+    
+
+}
+
+function drawLineWithMargin(ctx, data, color, margin, chartWidth, chartHeight) {
+    if (data.length < 2) return;
+    
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    
+    for (let i = 0; i < data.length; i++) {
+        const x = margin.left + (i / (data.length - 1)) * chartWidth;
+        const y = margin.top + chartHeight - (data[i] / 100) * chartHeight;
+        
+        if (i === 0) {
+            ctx.moveTo(x, y);
+        } else {
+            ctx.lineTo(x, y);
+        }
+    }
+    
+    ctx.stroke();
+}
+
+function drawLegend(ctx, canvasWidth, canvasHeight, margin) {
+    const legendX = margin.left + 10;
+    const legendY = margin.top + 10;
+    const lineLength = 20;
+    const lineSpacing = 25;
+    
+    ctx.font = '12px Arial';
+    ctx.textAlign = 'left';
+    
+    // CPU legend
+    ctx.strokeStyle = '#007cba';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(legendX, legendY);
+    ctx.lineTo(legendX + lineLength, legendY);
+    ctx.stroke();
+    
+    ctx.fillStyle = '#333';
+    ctx.fillText('CPU', legendX + lineLength + 5, legendY + 4);
+    
+    // Memory legend
+    ctx.strokeStyle = '#dc3545';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(legendX, legendY + lineSpacing);
+    ctx.lineTo(legendX + lineLength, legendY + lineSpacing);
+    ctx.stroke();
+    
+    ctx.fillStyle = '#333';
+    ctx.fillText('Memory', legendX + lineLength + 5, legendY + lineSpacing + 4);
+}
+
+function drawLine(ctx, data, color, width, height) {
+    if (data.length < 2) return;
+    
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    
+    for (let i = 0; i < data.length; i++) {
+        const x = (i / (data.length - 1)) * width;
+        const y = height - (data[i] / 100) * height;
+        
+        if (i === 0) {
+            ctx.moveTo(x, y);
+        } else {
+            ctx.lineTo(x, y);
+        }
+    }
+    
+    ctx.stroke();
+}
+</script>
+
+<style>
+/* 防止与 LuCI 冲突的基础重置 */
+* {
+    box-sizing: border-box;
+}
+
+/* 确保组件不会意外覆盖 LuCI 主界面 */
+.dashboard-container {
+    position: relative;
+    z-index: auto;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    margin: 0;
+}
+
+/* Container */
+.dashboard-container {
+    width: 100%;
+    margin: 0;
+    padding: 0;
+}
+
+
+
+/* Main Container */
+.main-container {
+    background: white;
+    border-radius: 16px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    padding: 30px;
+    border: 1px solid #e2e8f0;
+    margin: 0;
+}
+
+/* Overview Header Card */
+.overview-header-card {
+    grid-column: 1 / -1;
+    text-align: center;
+    margin-bottom: 10px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    border: none;
+}
+
+.overview-header-card .card-content {
+    padding: 30px 20px;
+}
+
+.overview-title {
+    color: #1a202c;
+    font-size: 2.4em;
+    font-weight: 700;
+    margin: 0 0 10px 0;
+}
+
+.overview-subtitle {
+    color: #1a202c;
+    font-size: 1.1em;
+    margin: 0;
+    font-weight: 400;
+}
+
+/* Grid */
+.dashboard-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: auto;
+    gap: 20px;
+    align-items: stretch;
+    width: 100%;
+}
+
+@media (max-width: 768px) {
+    .dashboard-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* Cards */
+.dashboard-card {
+    background: #f8fafc;
+    border-radius: 12px;
+    border: 1px solid #e2e8f0;
+    transition: all 0.2s ease;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+}
+
+.dashboard-card:hover {
+    box-shadow: 0 4px 15px rgba(0,0,0,0.08);
+    transform: translateY(-2px);
+}
+
+.documentation-card {
+    grid-column: 1 / -1;
+    min-width: 100%;
+}
+
+.card-title {
+    color: #2d3748;
+    font-size: 1.2em;
+    font-weight: 600;
+    margin: 0 0 20px 0;
+    padding-bottom: 10px;
+    border-bottom: 2px solid #e2e8f0;
+}
+
+.card-content {
+    padding: 20px;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+}
+
+.sections-container {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+}
+
+/* Sections */
+.section {
+    margin-bottom: 20px;
+    padding-bottom: 15px;
+    border-bottom: 1px solid #e2e8f0;
+}
+
+.section:last-child {
+    margin-bottom: 0;
+    padding-bottom: 0;
+    border-bottom: none;
+}
+
+.section h3 {
+    color: #4a5568;
+    font-size: 1em;
+    font-weight: 600;
+    margin: 0 0 12px 0;
+}
+
+/* Status Info */
+.status-main {
+    margin-bottom: 15px;
+}
+
+.status-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 12px;
+    background: #ffffff;
+    border-radius: 6px;
+    border: 1px solid #e2e8f0;
+    margin-bottom: 8px;
+}
+
+.status-row:last-child {
+    margin-bottom: 0;
+}
+
+.status-label {
+    color: #4a5568;
+    font-size: 0.9em;
+    font-weight: 500;
+    min-width: 60px;
+}
+
+.status {
+    padding: 3px 8px;
+    border-radius: 12px;
+    font-size: 0.8em;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.status.running {
+    background: #10b981;
+    color: white;
+}
+
+.status.offline {
+    background: #ef4444;
+    color: white;
+}
+
+.detail {
+    color: #6b7280;
+    font-size: 0.85em;
+}
+
+/* Buttons */
+.buttons {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    gap: 8px;
+    margin-top: 15px;
+}
+
+.btn {
+    padding: 10px 16px;
+    border: none;
+    border-radius: 6px;
+    font-size: 0.85em;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+}
+
+.btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.btn.primary {
+    background: #3182ce;
+    color: white;
+}
+
+.btn.primary:hover:not(:disabled) {
+    background: #2c5282;
+}
+
+.btn.secondary {
+    background: #718096;
+    color: white;
+}
+
+.btn.secondary:hover:not(:disabled) {
+    background: #4a5568;
+}
+
+.btn.info {
+    background: #38b2ac;
+    color: white;
+}
+
+.btn.info:hover:not(:disabled) {
+    background: #319795;
+}
+
+.btn.danger {
+    background: #e53e3e;
+    color: white;
+}
+
+.btn.danger:hover:not(:disabled) {
+    background: #c53030;
+}
+
+/* Settings */
+.settings {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.checkbox-label {
+    display: flex;
+    align-items: center;
+    margin-bottom: 8px;
+    cursor: pointer;
+    font-size: 0.9em;
+    color: #4a5568;
+    padding: 8px 12px;
+    background: #ffffff;
+    border-radius: 6px;
+    border: 1px solid #e2e8f0;
+    transition: all 0.2s ease;
+    min-height: 20px;
+}
+
+.checkbox-label:hover {
+    background: #f7fafc;
+    border-color: #cbd5e0;
+}
+
+.checkbox-label input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+    accent-color: #3182ce;
+    cursor: pointer;
+    margin-right: 8px;
+}
+
+/* Metrics */
+.metrics {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+    margin-bottom: 20px;
+}
+
+.metric {
+    text-align: center;
+    padding: 15px;
+    background: #ffffff;
+    border-radius: 8px;
+    border: 1px solid #e2e8f0;
+    transition: all 0.2s ease;
+}
+
+.metric:hover {
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+
+.metric-label {
+    font-size: 0.8em;
+    color: #6b7280;
+    margin-bottom: 5px;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.metric-value {
+    font-size: 1.2em;
+    font-weight: 600;
+    color: #2d3748;
+}
+
+/* Chart */
+.chart-section {
+    position: relative;
+    height: 300px;
+    background: #ffffff;
+    border-radius: 8px;
+    border: 1px solid #e2e8f0;
+    flex: 1;
+    min-height: 200px;
+    padding: 10px;
+    box-sizing: border-box;
+}
+
+#performance-chart {
+    width: 100%;
+    height: 100%;
+    display: block;
+    border-radius: 4px;
+}
+
+.placeholder {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    display: none; /* 默认隐藏 */
+    align-items: center;
+    justify-content: center;
+    color: #6b7280;
+    font-size: 0.9em;
+    background: #ffffff;
+    pointer-events: none; /* 防止阻挡点击事件 */
+}
+
+/* Documentation Layout */
+.doc-layout {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 15px;
+    margin-bottom: 20px;
+    align-items: stretch;
+}
+
+.quick-section {
+    grid-column: 1 / -1;
+}
+
+/* Documentation */
+.doc-section {
+    margin-bottom: 20px;
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+}
+
+.doc-section:last-child {
+    margin-bottom: 0;
+}
+
+.doc-section h3 {
+    color: #2c3e50;
+    font-size: 1em;
+    font-weight: 600;
+    margin: 0 0 12px 0;
+}
+
+/* Documentation Links */
+.doc-section {
+    margin-bottom: 20px;
+    padding: 15px;
+    background: #ffffff;
+    border-radius: 8px;
+    border: 1px solid #e2e8f0;
+}
+
+.doc-layout .doc-section {
+    margin-bottom: 0;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+}
+
+.doc-section h3 {
+    color: #4a5568;
+    font-size: 1em;
+    font-weight: 600;
+    margin: 0 0 10px 0;
+}
+
+.doc-links {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin-bottom: 10px;
+    flex: 1;
+    align-content: start;
+}
+
+.doc-link {
+    padding: 8px 12px;
+    background: #3182ce;
+    color: white !important;
+    text-decoration: none !important;
+    border-radius: 6px;
+    font-size: 0.85em;
+    font-weight: 500;
+    transition: all 0.2s ease;
+    text-align: center;
+    width: 100%;
+    box-sizing: border-box;
+    display: inline-block;
+}
+
+.doc-link:hover {
+    background: #2c5282;
+    color: white !important;
+    text-decoration: none !important;
+}
+
+.doc-link:visited {
+    color: white !important;
+}
+
+.quick-links {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+}
+
+.link-btn {
+    padding: 8px 12px;
+    background: #38b2ac;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    font-size: 0.8em;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.link-btn:hover {
+    background: #319795;
+}
+
+/* Modal */
+.modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0,0,0,0.5);
+    display: none; /* 默认隐藏 */
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+}
+
+.modal-dialog {
+    background: white;
+    border-radius: 12px;
+    max-width: 600px;
+    width: 90%;
+    max-height: 80vh;
+    overflow-y: auto;
+    box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+}
+
+.modal-header {
+    padding: 20px 25px;
+    border-bottom: 1px solid #e9ecef;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.modal-header h3 {
+    margin: 0;
+    color: #2c3e50;
+}
+
+.close-btn {
+    background: none;
+    border: none;
+    font-size: 24px;
+    cursor: pointer;
+    color: #6c757d;
+    padding: 0;
+    width: 30px;
+    height: 30px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.close-btn:hover {
+    color: #dc3545;
+}
+
+.modal-body {
+    padding: 25px;
+}
+
+.api-endpoints, .commands, .faq {
+    margin-top: 15px;
+}
+
+.endpoint, .command, .faq-item {
+    margin-bottom: 15px;
+    padding-bottom: 15px;
+    border-bottom: 1px solid #e9ecef;
+}
+
+.endpoint:last-child, .command:last-child, .faq-item:last-child {
+    margin-bottom: 0;
+    padding-bottom: 0;
+    border-bottom: none;
+}
+
+.endpoint code, .command code {
+    display: block;
+    background: #f8f9fa;
+    color: #2c3e50;
+    padding: 10px;
+    border-radius: 6px;
+    font-family: 'Monaco', 'Menlo', monospace;
+    margin-bottom: 5px;
+    border-left: 3px solid #007cba;
+}
+
+.endpoint span, .command span {
+    color: #6c757d;
+    font-size: 0.9em;
+}
+
+.faq-item h4 {
+    color: #2c3e50;
+    margin: 0 0 8px 0;
+    font-size: 1em;
+}
+
+.faq-item p {
+    color: #6c757d;
+    margin: 0;
+    line-height: 1.5;
+}
+
+/* Notifications */
+.notifications {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    z-index: 1000;
+    max-width: 350px;
+}
+
+.notification {
+    background: white;
+    border-radius: 8px;
+    padding: 15px 20px;
+    margin-bottom: 10px;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    animation: slideIn 0.3s ease;
+    border-left: 4px solid #007cba;
+}
+
+.notification.success {
+    border-left-color: #28a745;
+}
+
+.notification.error {
+    border-left-color: #dc3545;
+}
+
+.notification .close {
+    background: none;
+    border: none;
+    font-size: 18px;
+    cursor: pointer;
+    color: #6c757d;
+    padding: 0;
+    margin-left: 15px;
+}
+
+@keyframes slideIn {
+    from {
+        transform: translateX(100%);
+        opacity: 0;
+    }
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
+}
+
+
+/* Responsive Design */
+@media (max-width: 768px) {
+    .dashboard-header {
+        padding: 15px;
+    }
+    
+    .main-container {
+        padding: 20px;
+    }
+    
+    .dashboard-grid {
+        grid-template-columns: 1fr;
+        grid-template-rows: auto;
+        gap: 15px;
+    }
+    
+    .dashboard-card {
+        min-width: unset;
+    }
+    
+    .documentation-card {
+        grid-column: 1;
+    }
+    
+    .card-content {
+        padding: 15px;
+    }
+    
+    .dashboard-header h1 {
+        font-size: 2em;
+    }
+    
+    .buttons {
+        grid-template-columns: 1fr;
+        gap: 8px;
+    }
+    
+    .metrics {
+        grid-template-columns: 1fr;
+        gap: 10px;
+    }
+    
+    .doc-links {
+        grid-template-columns: 1fr;
+    }
+    
+    .doc-layout {
+        grid-template-columns: 1fr;
+        gap: 15px;
+    }
+    
+    .quick-links {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 480px) {
+    .dashboard-header h1 {
+        font-size: 1.6em;
+    }
+    
+    .subtitle {
+        font-size: 1em;
+    }
+    
+    .dashboard-container {
+        padding: 10px;
+    }
+    
+    .main-container {
+        padding: 15px;
+    }
+    
+    .card-content {
+        padding: 12px;
+    }
+    
+    .card-title {
+        font-size: 1.1em;
+        margin-bottom: 15px;
+    }
+    
+    .status-label {
+        min-width: 50px;
+        font-size: 0.85em;
+    }
+    
+    .doc-layout {
+        grid-template-columns: 1fr;
+        gap: 12px;
+    }
+    
+    .doc-links {
+        grid-template-columns: 1fr;
+        gap: 6px;
+    }
+    
+    .quick-links {
+        grid-template-columns: 1fr;
+        gap: 6px;
+    }
+}
+
+
+</style>
+
+<%+footer%>

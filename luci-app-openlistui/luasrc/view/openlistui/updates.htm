@@ -1,0 +1,1076 @@
+<%#
+Copyright 2025 Drfccv
+Licensed under the MIT License
+%>
+
+<%
+-- Read kernel_save_path from UCI configuration
+local uci = require "luci.model.uci".cursor()
+local kernel_save_path = uci:get("openlistui", "integration", "kernel_save_path") or "/tmp/openlist"
+%>
+
+<%+header%>
+
+<script type="text/javascript" src="<%=resource%>/cbi.js"></script>
+
+<style>
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    margin: 0;
+}
+
+.dashboard-container {
+    width: 100%;
+    margin: 0;
+    padding: 0;
+}
+
+.main-container {
+    background: white;
+    border-radius: 16px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    padding: 30px;
+    border: 1px solid #e2e8f0;
+    margin: 0;
+}
+
+.cbi-section {
+    width: 100%;
+    margin: 0;
+    padding: 0;
+}
+
+fieldset.cbi-section {
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.components-section {
+    width: 100%;
+    box-sizing: border-box;
+}
+
+table {
+    width: 100%;
+    table-layout: auto;
+    box-sizing: border-box;
+}
+</style>
+
+<div class="dashboard-container">
+    <div class="main-container">
+        <div class="cbi-section">
+    <h2 style="color: #333; margin-bottom: 15px;"><%:Update Management%></h2>
+    
+    <!-- Update Configuration Section -->
+    <fieldset class="cbi-section">
+        <table width="100%">
+            <tr><td width="100%" colspan="6">
+                <p align="center" id="update_tip">
+                    <b><%:Note: if the update fails, you can manually download and upload%></b>
+                </p>
+            </td></tr>
+            <tr>
+                <td width="16.6%" align="right"><%:Target Architecture%></td>
+                <td width="16.6%" align="left">
+                    <select class="cbi-input-select" name="TARGET_ARCH" id="TARGET_ARCH">
+                        <option value="linux-386"><%:linux-386%></option>
+                        <option value="linux-amd64"><%:linux-amd64(x86-64)%></option>
+                        <option value="linux-amd64-v3"><%:linux-amd64-v3(x86-64)%></option>
+                        <option value="linux-armv5"><%:linux-armv5%></option>
+                        <option value="linux-armv6"><%:linux-armv6%></option>
+                        <option value="linux-armv7"><%:linux-armv7%></option>
+                        <option value="linux-arm64"><%:linux-arm64(armv8)%></option>
+                        <option value="linux-loong64"><%:linux-loong64%></option>
+                        <option value="linux-riscv64"><%:linux-riscv64%></option>
+                        <option value="linux-mips"><%:linux-mips%></option>
+                        <option value="linux-mips64"><%:linux-mips64%></option>
+                        <option value="linux-mips64le"><%:linux-mips64le%></option>
+                        <option value="linux-mipsle"><%:linux-mipsle%></option>
+                        <option value="0"><%:Auto Detect%></option>
+                    </select>
+                </td>
+                <td width="16.6%" align="right"><%:Release Branch%></td>
+                <td width="16.6%" align="left">
+                    <select class="cbi-input-select" name="RELEASE_BRANCH" id="RELEASE_BRANCH">
+                        <option value="master"><%:Stable (Master)%></option>
+                        <option value="dev"><%:Development (Beta)%></option>
+                    </select>
+                </td>
+                <td width="16.6%" align="right"><%:Core Type%> <a href="javascript:void(0);" onclick="showCoreTypeHelp()" style="color: #0066cc; text-decoration: none;" title="<%:View core type information%>"> (?)</a></td>
+                <td width="16.6%" align="left">
+                    <select class="cbi-input-select" name="CORE_TYPE" id="CORE_TYPE">
+                        <option value="full"><%:Full Core%></option>
+                        <option value="lite"><%:Lite Core%></option>
+                    </select>
+                </td>
+            </tr>
+        </table>
+    </fieldset>
+    <!-- Component Updates -->
+    <div class="components-section">
+        <h3><%:Component Updates%></h3>
+        
+        <!-- OpenList Core Update -->
+        <fieldset class="cbi-section">
+            <table width="100%">
+                <tr><td width="100%" colspan="4">
+                    <p align="center">
+                        <b><%:OpenList Core Update%></b>
+                    </p>
+                </td></tr>
+                <tr><td width="100%" colspan="4">
+                    <p align="center">
+                        <b><%:Download path:%> <span id="kernel-save-path" style="color: #0066cc; font-family: monospace; font-weight: bold;"><%=kernel_save_path%></span></b>
+                    </p>
+                </td></tr>
+                <tr>
+                    <td width="25%"><%:Current Version%></td>
+                    <td width="25%" align="left" id="openlist-current-detailed"><%:Loading...%></td>
+                    <td width="25%"><%:Latest Version%></td>
+                    <td width="25%" align="left" id="openlist-latest-detailed"><%:Loading...%></td>
+                </tr>
+                <tr>
+                    <td width="25%"><%:System Architecture%></td>
+                    <td width="25%" align="left" id="openlist-package-size"><%:Loading...%></td>
+                    <td width="25%"><%:Package Date%></td>
+                    <td width="25%" align="left" id="openlist-package-date"><%:Loading...%></td>
+                </tr>
+                <tr>
+                    <td width="25%"><%:Download Path%></td>
+                    <td width="25%" align="left" colspan="3" id="openlist-package-hash" style="font-family: monospace; font-size: 11px;"><%=kernel_save_path%></td>
+                </tr>
+                <tr>
+                    <td width="25%"><%:Update Core%></td>
+                    <td width="25%" align="left" id="openlist-update-action"><%:Loading...%></td>
+                    <td width="25%"><%:Download Latest Core%></td>
+                    <td width="25%" align="left" id="openlist-download-action"><%:Loading...%></td>
+                </tr>
+            </table>
+        </fieldset>
+        
+        <!-- LuCI App Update Section -->
+        <fieldset class="cbi-section" style="margin-top: 20px;">
+            <table width="100%">
+                <tr><td width="100%" colspan="4">
+                    <p align="center">
+                        <b><%:LuCI App Update Management%></b>
+                    </p>
+                </td></tr>
+                <tr><td width="100%" colspan="4">
+                    <p align="center">
+                        <b><%:Check and install updates for the LuCI OpenList interface%></b>
+                    </p>
+                </td></tr>
+                <tr>
+                    <td width="25%"><%:Current Version%></td>
+                    <td width="25%" align="left" id="luci-current-version"><%:Loading...%></td>
+                    <td width="25%"><%:Latest Version%></td>
+                    <td width="25%" align="left" id="luci-latest-version"><%:Loading...%></td>
+                </tr>
+                <tr>
+                    <td width="25%"><%:Update Status%></td>
+                    <td width="25%" align="left" id="luci-update-status"><%:Loading...%></td>
+                    <td width="25%"><%:GitHub Release%></td>
+                    <td width="25%" align="left" id="luci-github-link"><%:Loading...%></td>
+                </tr>
+                <tr>
+                    <td width="25%"><%:Check Updates%></td>
+                    <td width="25%" align="left" id="luci-check-action">
+                        <input type="button" class="btn cbi-button cbi-button-reload" value="<%:Check And Updates%>" onclick="checkLuciUpdates()" id="luci-check-btn" />
+                    </td>
+                    <td width="25%"><%:Download%></td>
+                     <td width="25%" align="left" id="luci-install-action">
+                         <%:Loading...%>
+                    </td>
+                </tr>
+            </table>
+        </fieldset>
+
+        
+    </div>
+
+
+</div>
+
+<!-- Update Progress Modal -->
+<div id="updateProgressModal" class="modal" style="display: none;">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3><%:Updating Component%></h3>
+        </div>
+        <div class="modal-body">
+            <div class="progress-info">
+                <div class="progress-text" id="progress-text"><%:Preparing update...%></div>
+                <div class="progress-bar">
+                    <div class="progress-fill" id="progress-fill" style="width: 0%"></div>
+                </div>
+                <div class="progress-percentage" id="progress-percentage">0%</div>
+            </div>
+            <div class="progress-log" id="progress-log">
+                <!-- Progress details will be shown here -->
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" id="cancel-update-btn" onclick="cancelUpdate()">
+                <%:Cancel%>
+            </button>
+        </div>
+    </div>
+</div>
+
+<script type="text/javascript">//<![CDATA[
+// Variable declarations - OpenClash style
+var target_arch = document.getElementById('TARGET_ARCH');
+var release_branch = document.getElementById('RELEASE_BRANCH');
+var core_type = document.getElementById('CORE_TYPE');
+var update_tip = document.getElementById('update_tip');
+var openlist_current = document.getElementById('openlist-current-detailed');
+var openlist_latest = document.getElementById('openlist-latest-detailed');
+
+var openlist_update_action = document.getElementById('openlist-update-action');
+var openlist_download_action = document.getElementById('openlist-download-action');
+var luci_install_action = document.getElementById('luci-install-action');
+
+var updateInProgress = false;
+
+// Initialize buttons - OpenClash style
+if (openlist_update_action) {
+    openlist_update_action.innerHTML = '<input type="button" class="btn cbi-button cbi-button-reload" value="<%:Check And Update%>" onclick="return component_update(this, \'openlist\')"/>';
+}
+if (openlist_download_action) {
+    openlist_download_action.innerHTML = '<input type="button" class="btn cbi-button cbi-button-reload" value="<%:Download%>" onclick="return component_download(this, \'openlist\')"/>';
+}
+if (luci_install_action) {
+    luci_install_action.innerHTML = '<input type="button" class="btn cbi-button cbi-button-reload" value="<%:Download%>" onclick="installLuciUpdate()" id="luci-install-btn" />';
+}
+
+
+// Load configuration on startup - similar to OpenClash update_info
+XHR.get('<%=luci.dispatcher.build_url("admin", "services", "openlistui", "update_info")%>', null, function(x, status) {
+    if (x && x.status == 200) {
+        if (target_arch) {
+            if (status.target_arch && status.target_arch != "0" && status.target_arch != "") {
+                target_arch.value = status.target_arch;
+            } else {
+                target_arch.value = "0";
+            }
+        }
+        if (release_branch) {
+            if (status.release_branch && status.release_branch != "") {
+                release_branch.value = status.release_branch;
+            } else {
+                release_branch.value = "master";
+            }
+        }
+        if (core_type) {
+            if (status.core_type && status.core_type != "") {
+                core_type.value = status.core_type;
+            } else {
+                core_type.value = "full";
+            }
+        }
+    } else {
+        target_arch.value = "0";
+        release_branch.value = "master";
+        core_type.value = "full";
+    }
+});
+
+// Main update status handler - OpenClash style with XHR.poll
+function updateVersionStatus(x, status) {
+    if (x && x.status == 200) {
+        // Update system architecture display
+        var packageSizeElement = document.getElementById('openlist-package-size');
+        if (packageSizeElement) {
+            packageSizeElement.innerHTML = status.system_arch ? 
+                "<b style=color:green>" + status.system_arch + "</b>" : 
+                "<b style=color:red><%:Unknown%></b>";
+        }
+        
+        // Update OpenList current version
+        if (openlist_current) {
+            if (status.openlist_current == "0" || !status.openlist_current) {
+                openlist_current.innerHTML = "<b style=color:red><%:Not Installed%></b>";
+            } else {
+                openlist_current.innerHTML = "<b style=color:green>" + status.openlist_current + "</b>";
+            }
+        }
+        
+        // Update OpenList latest version
+        if (openlist_latest) {
+            var openlist_lv = status.openlist_latest;
+            if (openlist_lv != status.openlist_current && openlist_lv != "" && openlist_lv != "loading..." && openlist_lv != "unknown") {
+                openlist_latest.innerHTML = "<b style=color:green>" + openlist_lv + " <%:<New>%></b>";
+            } else if (openlist_lv != "" && openlist_lv == status.openlist_current && openlist_lv != "loading..." && openlist_lv != "unknown") {
+                openlist_latest.innerHTML = "<b style=color:green>" + openlist_lv + "</b>";
+            } else if (openlist_lv == "loading...") {
+                openlist_latest.innerHTML = "<b style=color:green><%:Getting Latest Version...%></b>";
+            } else {
+                openlist_latest.innerHTML = "<b style=color:red><%:Unknown%></b>";
+            }
+        }
+        
+        // Update LuCI app version information
+        if (status.luci_current) {
+            var luciCurrentElement = document.getElementById('luci-current-version');
+            if (luciCurrentElement) {
+                luciCurrentElement.innerHTML = status.luci_current !== "unknown" ? 
+                    "<b style=color:green>" + status.luci_current + "</b>" : 
+                    "<b style=color:red><%:Unknown%></b>";
+            }
+        }
+        
+        if (status.luci_latest) {
+            var luciLatestElement = document.getElementById('luci-latest-version');
+            if (luciLatestElement) {
+                luciLatestElement.innerHTML = status.luci_latest !== "unknown" ? 
+                    "<b style=color:green>" + status.luci_latest + "</b>" : 
+                    "<b style=color:red><%:Unknown%></b>";
+            }
+        }
+        
+        // Update LuCI app status and GitHub link
+        if (typeof status.luci_update_available !== 'undefined') {
+            var luciStatusElement = document.getElementById('luci-update-status');
+            var luciGithubLink = document.getElementById('luci-github-link');
+            
+            if (luciStatusElement) {
+                if (status.luci_update_available) {
+                    luciStatusElement.innerHTML = '<span style="color: #ff6600; font-weight: bold;"><%:Update Available%></span>';
+                } else {
+                    luciStatusElement.innerHTML = '<span style="color: #00aa00; font-weight: bold;"><%:Up to Date%></span>';
+                }
+            }
+            
+            if (luciGithubLink) {
+                var githubUrl = "https://github.com/drfccv/luci-app-openlistui/releases";
+                luciGithubLink.innerHTML = '<a href="' + githubUrl + '" target="_blank" style="color: #0066cc;"><%:View Release%></a>';
+            }
+        }
+
+        
+        // Update package info
+        var packageDateElement = document.getElementById('openlist-package-date');
+        if (packageDateElement) {
+            if (status.openlist_package_date) {
+                packageDateElement.innerHTML = "<b style=color:green>" + status.openlist_package_date + "</b>";
+            } else {
+                packageDateElement.innerHTML = "<b style=color:red><%:Unknown%></b>";
+            }
+        }
+        
+
+        
+        // Update status display
+        var statusDiv = document.getElementById('update-status');
+        if (statusDiv && openlist_latest) {
+            var openlist_lv = status.openlist_latest;
+            var hasUpdates = (openlist_lv != status.openlist_current && openlist_lv != "" && openlist_lv != "loading..." && openlist_lv != "unknown");
+            
+            if (hasUpdates) {
+                statusDiv.innerHTML = '<div class="update-available"><i class="icon-warning"></i> <%:Updates available%></div>';
+            } else {
+                statusDiv.innerHTML = '<div class="update-current"><i class="icon-check"></i> <%:All components are up to date%></div>';
+            }
+        }
+        
+        // Update kernel save path if available
+        if (status.kernel_save_path) {
+            updateKernelSavePathDisplay(status.kernel_save_path);
+        }
+    } else {
+        var statusDiv = document.getElementById('update-status');
+        if (statusDiv) {
+            statusDiv.innerHTML = '<div class="error"><i class="icon-close"></i> <%:Failed to check for updates. Please check your network connection.%></div>';
+        }
+    }
+}
+
+// Update kernel save path display
+function updateKernelSavePathDisplay(path) {
+    var pathElement = document.getElementById('kernel-save-path');
+    if (pathElement) {
+        pathElement.innerHTML = '<span style="color: #0066cc; font-family: monospace; font-weight: bold;">' + path + '</span>';
+    }
+    
+    // Also update the download path display in the package hash field
+    var hashElement = document.getElementById('openlist-package-hash');
+    if (hashElement) {
+        hashElement.innerHTML = '<span style="color: #0066cc; font-family: monospace; font-size: 11px;">' + path + '</span>';
+    }
+}
+
+// Start polling for version updates - OpenClash style
+XHR.get('<%=luci.dispatcher.build_url("admin", "services", "openlistui", "update")%>', null, updateVersionStatus);
+XHR.poll(10, '<%=luci.dispatcher.build_url("admin", "services", "openlistui", "update")%>', null, updateVersionStatus);
+
+// Save configuration function
+function saveUpdateConfig() {
+    var v = target_arch.value;
+    var r = release_branch.value;
+    var c = core_type.value;
+    XHR.get('<%=luci.dispatcher.build_url("admin", "services", "openlistui", "save_config")%>', 
+           {target_arch: v, release_branch: r, core_type: c}, function(x, status) {
+        // Configuration saved
+    });
+}
+
+// Component update function - OpenClash style
+function component_update(btn, component) {
+    var v = target_arch.value;
+    var r = release_branch.value;
+    var c = core_type.value;
+    
+    console.log('Starting component update for:', component);
+    
+    XHR.get('<%=luci.dispatcher.build_url("admin", "services", "openlistui", "save_config")%>', 
+           {target_arch: v, release_branch: r, core_type: c}, function(x, status) {
+        console.log('Save config response:', status, x);
+        if (x && x.status == 200) {
+            btn.value = '<%:Updating...%>';
+            btn.disabled = true;
+            
+            console.log('Calling component_update API for:', component);
+            XHR.get('<%=luci.dispatcher.build_url("admin", "services", "openlistui", "component_update")%>', 
+                   {component: component, core_type: c}, function(x, result) {
+                console.log('Component update response:', result, x);
+                
+                if (x && x.status == 200) {
+                    if (result && result.success) {
+                        alert('Update successful: ' + (result.message || 'Component updated'));
+                    } else {
+                        alert('Update failed: ' + (result && result.message ? result.message : 'Unknown error'));
+                    }
+                } else {
+                    alert('Update failed: Network error (Status: ' + (x ? x.status : 'unknown') + ')');
+                }
+                
+                btn.value = '<%:Check And Update%>';
+                btn.disabled = false;
+            });
+        } else {
+            console.error('Failed to save config:', status);
+            alert('Failed to save configuration');
+        }
+    });
+    return false;
+}
+
+// Component download function - OpenClash style
+function component_download(btn, component) {
+    var v = target_arch.value;
+    var r = release_branch.value;
+    var c = core_type.value;
+    
+    if (v === "0") {
+        alert('<%:Please select a specific architecture for download%>');
+        return false;
+    }
+    
+    XHR.get('<%=luci.dispatcher.build_url("admin", "services", "openlistui", "save_config")%>', 
+           {target_arch: v, release_branch: r, core_type: c}, function(x, status) {
+        if (x && x.status == 200) {
+            btn.value = '<%:Getting Download Link...%>';
+            btn.disabled = true;
+            XHR.get('<%=luci.dispatcher.build_url("admin", "services", "openlistui", "get_download_url")%>', 
+                   {component: component, arch: v, branch: r, core_type: c}, function(x, status) {
+                btn.value = '<%:Download%>';
+                btn.disabled = false;
+                if (x && x.status == 200 && status.download_url) {
+                    window.open(status.download_url, '_blank');
+                } else {
+                    alert('<%:Failed to get download URL%>');
+                }
+                return false;
+            });
+        }
+    });
+    return false;
+}
+
+// Auto-detect and load saved configuration
+function loadUpdateConfig() {
+    // This is now handled by the initial XHR.get call above
+}
+
+// Save configuration when values change
+target_arch.addEventListener('change', saveUpdateConfig);
+release_branch.addEventListener('change', saveUpdateConfig);
+core_type.addEventListener('change', saveUpdateConfig);
+
+// Update kernel save path display
+function updateKernelSavePathDisplay(path) {
+    var pathElement = document.getElementById('kernel-save-path');
+    if (pathElement) {
+        pathElement.innerHTML = '<span style="color: #0066cc; font-family: monospace; font-weight: bold;">' + path + '</span>';
+    }
+}
+
+// Utility functions - simplified OpenClash style
+
+function showCoreTypeHelp() {
+    var helpContent = 
+        '<%:Full Core%>: <%:Complete OpenList binary with all features%>\n\n' +
+        '<%:Lite Core%>: <%:Lightweight binary for resource-constrained devices%>';
+    alert(helpContent);
+}
+
+// LuCI App Update Functions
+function checkLuciUpdates() {
+    var btn = document.getElementById('luci-check-btn');
+    btn.value = '<%:Checking...%>';
+    btn.disabled = true;
+    
+    console.log('Starting LuCI update check...');
+    
+    // Call the specific LuCI update check endpoint
+    XHR.get('<%=luci.dispatcher.build_url("admin", "services", "openlistui", "check_luci_updates")%>', null, function(x, result) {
+        console.log('LuCI update check response:', x ? x.status : 'no response', result);
+        
+        btn.value = '<%:Check And Updates%>';
+        btn.disabled = false;
+        
+        if (x && x.status == 200) {
+            if (result && result.success) {
+                // Update LuCI app version display
+                var currentVersionElement = document.getElementById('luci-current-version');
+                var latestVersionElement = document.getElementById('luci-latest-version');
+                var updateStatusElement = document.getElementById('luci-update-status');
+                var githubLinkElement = document.getElementById('luci-github-link');
+                
+                if (currentVersionElement) currentVersionElement.textContent = result.current_version || '<%:Unknown%>';
+                if (latestVersionElement) latestVersionElement.textContent = result.latest_version || '<%:Unknown%>';
+                
+                if (result.update_available) {
+                    if (updateStatusElement) updateStatusElement.innerHTML = '<span style="color: orange;"><%:Update Available%></span>';
+                    
+                    // Auto install when update is available (like OpenList Core)
+                    console.log('Update available, starting auto installation...');
+                    autoInstallLuciUpdate();
+                } else {
+                    if (updateStatusElement) updateStatusElement.innerHTML = '<span style="color: green;"><%:Up to Date%></span>';
+                }
+                
+                // Update GitHub link
+                if (githubLinkElement && result.download_url) {
+                    githubLinkElement.innerHTML = '<a href="' + result.download_url + '" target="_blank" style="color: #0066cc;"><%:View Releases%></a>';
+                }
+                
+                console.log('LuCI update check completed successfully');
+            } else {
+                var errorMsg = result && result.message ? result.message : '<%:Invalid response format%>';
+                console.error('LuCI update check failed:', errorMsg);
+                alert('<%:Failed to check for updates%>: ' + errorMsg);
+            }
+        } else {
+            var statusCode = x ? x.status : 'unknown';
+            var errorMsg = '<%:Network error%> (Status: ' + statusCode + ')';
+            console.error('LuCI update check network error:', statusCode);
+            alert('<%:Failed to check for updates%>: ' + errorMsg);
+        }
+    });
+}
+
+function installLuciUpdate() {
+    var btn = document.getElementById('luci-install-btn');
+    if (btn) {
+        btn.value = '<%:Getting Download Link...%>';
+        btn.disabled = true;
+    }
+    
+    XHR.get('<%=luci.dispatcher.build_url("admin", "services", "openlistui", "get_download_url")%>', 
+           {component: 'luci'}, function(x, status) {
+        if (btn) {
+            btn.value = '<%:Download%>';
+            btn.disabled = false;
+        }
+        if (x && x.status == 200 && status.download_url) {
+            window.open(status.download_url, '_blank');
+        } else {
+            alert('<%:Failed to get download URL%>');
+        }
+    });
+    return false;
+}
+
+function autoInstallLuciUpdate() {
+    var checkBtn = document.getElementById('luci-check-btn');
+    if (checkBtn) {
+        checkBtn.value = '<%:Installing Update...%>';
+        checkBtn.disabled = true;
+    }
+    
+    XHR.get('<%=luci.dispatcher.build_url("admin", "services", "openlistui", "download_luci_update")%>', 
+           null, function(x, status) {
+        if (checkBtn) {
+            checkBtn.value = '<%:Check And Updates%>';
+            checkBtn.disabled = false;
+        }
+        if (x && x.status == 200) {
+            if (status.success) {
+                alert('<%:Update installed successfully! Please refresh the page.%>');
+                location.reload();
+            } else {
+                location.reload();
+            }
+        } else {
+            location.reload();
+        }
+    });
+}
+
+// LuCI updates are now handled by the main polling mechanism
+// No need for separate auto-check
+
+//]]></script>
+
+<style>
+.cbi-input-select {
+    width: auto !important;
+    padding: 4px 8px;
+    border: 1px solid #ccc;
+    border-radius: 3px;
+    background: white;
+}
+
+fieldset.cbi-section {
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    margin: 15px 0;
+    padding: 0;
+    background: white;
+}
+
+fieldset.cbi-section table {
+    margin: 0;
+    width: 100%;
+}
+
+fieldset.cbi-section td {
+    padding: 8px 12px;
+    border-bottom: 1px solid #f0f0f0;
+    vertical-align: middle;
+}
+
+fieldset.cbi-section tr:last-child td {
+    border-bottom: none;
+}
+
+fieldset.cbi-section p {
+    margin: 0;
+    padding: 10px;
+    background: #f5f5f5;
+    border-bottom: 1px solid #ddd;
+    font-weight: bold;
+}
+
+.btn.cbi-button {
+    padding: 6px 12px;
+    margin: 2px;
+    border: 1px solid transparent;
+    border-radius: 3px;
+    font-size: 13px;
+    cursor: pointer;
+    text-decoration: none;
+    display: inline-block;
+}
+
+.btn.cbi-button-reload {
+    background: #007cba;
+    color: white;
+    border-color: #007cba;
+}
+
+.btn.cbi-button-reload:hover:not(:disabled) {
+    background: #005a8a;
+    border-color: #005a8a;
+}
+
+.btn.cbi-button:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.update-overview {
+    margin-bottom: 30px;
+}
+
+.overview-card {
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    background: white;
+}
+
+.card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 15px;
+    background: #f5f5f5;
+    border-bottom: 1px solid #ddd;
+}
+
+.card-header h3 {
+    margin: 0;
+    color: #333;
+}
+
+.card-body {
+    padding: 15px;
+}
+
+.components-section {
+    margin-bottom: 30px;
+}
+
+.component-card {
+    margin: 15px 0;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    background: white;
+}
+
+.component-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 15px;
+    background: #f9f9f9;
+    border-bottom: 1px solid #ddd;
+}
+
+.component-info h4 {
+    margin: 0 0 5px 0;
+    color: #333;
+}
+
+.component-description {
+    margin: 0;
+    color: #666;
+    font-size: 14px;
+}
+
+.component-body {
+    padding: 15px;
+}
+
+.version-details {
+    margin-bottom: 15px;
+}
+
+.version-details > div {
+    margin: 5px 0;
+}
+
+.update-available {
+    color: #856404;
+    background: #fff3cd;
+    padding: 10px;
+    border-radius: 4px;
+    border: 1px solid #ffeaa7;
+}
+
+.update-current {
+    color: #155724;
+    background: #d4edda;
+    padding: 10px;
+    border-radius: 4px;
+    border: 1px solid #c3e6cb;
+}
+
+.update-badge {
+    background: #ffc107;
+    color: #212529;
+    padding: 3px 8px;
+    border-radius: 3px;
+    font-size: 12px;
+    font-weight: bold;
+}
+
+.current-badge {
+    background: #28a745;
+    color: white;
+    padding: 3px 8px;
+    border-radius: 3px;
+    font-size: 12px;
+    font-weight: bold;
+}
+
+.update-log-section {
+    margin-bottom: 30px;
+}
+
+.info-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 15px;
+    padding: 15px;
+    background: white;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+}
+
+.info-item {
+    display: flex;
+    justify-content: space-between;
+}
+
+.info-item label {
+    font-weight: bold;
+    color: #333;
+}
+
+.log-container {
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    background: white;
+}
+
+.log-header {
+    padding: 15px;
+    background: #f5f5f5;
+    border-bottom: 1px solid #ddd;
+}
+
+.log-content {
+    padding: 15px;
+    max-height: 300px;
+    overflow-y: auto;
+    font-family: monospace;
+    font-size: 12px;
+}
+
+.log-entry {
+    margin: 5px 0;
+    padding: 5px;
+    border-left: 3px solid #007cba;
+    background: #f8f9fa;
+}
+
+.modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0,0,0,0.5);
+    display: none; /* 默认隐藏 */
+    z-index: 1000;
+}
+
+.modal-content {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: white;
+    border-radius: 4px;
+    width: 90%;
+    max-width: 600px;
+    max-height: 90%;
+    overflow-y: auto;
+}
+
+.modal-header {
+    padding: 15px;
+    background: #f5f5f5;
+    border-bottom: 1px solid #ddd;
+}
+
+.modal-body {
+    padding: 20px;
+}
+
+.modal-footer {
+    padding: 15px;
+    background: #f5f5f5;
+    border-top: 1px solid #ddd;
+    text-align: right;
+}
+
+.progress-info {
+    text-align: center;
+    margin-bottom: 20px;
+}
+
+.progress-text {
+    margin-bottom: 10px;
+    font-weight: bold;
+}
+
+.progress-bar {
+    width: 100%;
+    height: 20px;
+    background: #f8f9fa;
+    border-radius: 10px;
+    overflow: hidden;
+    margin-bottom: 10px;
+}
+
+.progress-fill {
+    height: 100%;
+    background: #007cba;
+    transition: width 0.3s ease;
+}
+
+.progress-percentage {
+    font-weight: bold;
+    color: #333;
+}
+
+.progress-log {
+    background: #f8f9fa;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    padding: 10px;
+    max-height: 200px;
+    overflow-y: auto;
+    font-family: monospace;
+    font-size: 12px;
+}
+
+.btn {
+    display: inline-block;
+    padding: 8px 16px;
+    margin: 0 4px;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    text-decoration: none;
+    font-size: 14px;
+    cursor: pointer;
+    background: none;
+}
+
+.btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.btn-primary {
+    background: #007cba;
+    color: white;
+    border-color: #007cba;
+}
+
+.btn-secondary {
+    background: #6c757d;
+    color: white;
+    border-color: #6c757d;
+}
+
+.btn-warning {
+    background: #ffc107;
+    color: #212529;
+    border-color: #ffc107;
+}
+
+.alert {
+    padding: 12px;
+    margin-bottom: 15px;
+    border: 1px solid transparent;
+    border-radius: 4px;
+}
+
+.alert-success {
+    color: #155724;
+    background-color: #d4edda;
+    border-color: #c3e6cb;
+}
+
+.alert-error {
+    color: #721c24;
+    background-color: #f8d7da;
+    border-color: #f5c6cb;
+}
+
+.alert-warning {
+    color: #856404;
+    background-color: #fff3cd;
+    border-color: #ffeaa7;
+}
+
+.alert-info {
+    color: #0c5460;
+    background-color: #d1ecf1;
+    border-color: #bee5eb;
+}
+
+.close {
+    float: right;
+    font-size: 20px;
+    font-weight: bold;
+    line-height: 1;
+    color: #000;
+    text-shadow: 0 1px 0 #fff;
+    opacity: 0.5;
+    background: none;
+    border: none;
+    cursor: pointer;
+}
+
+.close:hover {
+    opacity: 0.75;
+}
+
+.loading,
+.error {
+    text-align: center;
+    padding: 20px;
+    color: #666;
+    font-style: italic;
+}
+
+.error {
+    color: #dc3545;
+}
+
+.arch-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+    padding: 15px 0;
+}
+
+.arch-section h4 {
+    margin: 0 0 10px 0;
+    color: #333;
+    border-bottom: 2px solid #007cba;
+    padding-bottom: 5px;
+}
+
+.arch-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 10px;
+}
+
+.arch-item {
+    background: #f8f9fa;
+    border: 1px solid #dee2e6;
+    border-radius: 4px;
+    padding: 4px 8px;
+    font-size: 12px;
+    font-family: monospace;
+    color: #495057;
+}
+
+.arch-item:hover {
+    background: #e9ecef;
+    border-color: #adb5bd;
+}
+
+@media (max-width: 768px) {
+    .arch-grid {
+        grid-template-columns: 1fr;
+        gap: 15px;
+    }
+}
+</style>
+
+        </div>
+    </div>
+</div>
+
+<%+footer%>

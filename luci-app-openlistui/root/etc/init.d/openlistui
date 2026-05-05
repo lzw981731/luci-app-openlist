@@ -1,0 +1,286 @@
+#!/bin/sh /etc/rc.common
+
+START=99
+STOP=10
+
+USE_PROCD=1
+
+. /lib/functions.sh
+
+# Find OpenList binary
+find_openlist_binary() {
+    local binary_paths="
+        /usr/bin/openlist
+        /tmp/openlist/openlist
+        /opt/openlist/openlist
+        /usr/local/bin/openlist
+    "
+    
+    for path in $binary_paths; do
+        if [ -f "$path" ] && [ -x "$path" ]; then
+            echo "$path"
+            return 0
+        fi
+    done
+    return 1
+}
+
+# Update config.json with UCI settings
+update_config_json() {
+    local data_dir="$1"
+    local port="$2"
+    local cache_dir="$3"
+    local config_file="$data_dir/data/config.json"
+    
+    # Create config.json if it doesn't exist
+    if [ ! -f "$config_file" ]; then
+        mkdir -p "$data_dir/data"
+        cat > "$config_file" << EOF
+{
+  "force": false,
+  "site_url": "",
+  "cdn": "",
+  "jwt_secret": "$(head -c 16 /dev/urandom | base64 | tr -d '\n')",
+  "token_expires_in": 48,
+  "database": {
+    "type": "sqlite3",
+    "host": "",
+    "port": 0,
+    "user": "",
+    "password": "",
+    "name": "",
+    "db_file": "$data_dir/data/data.db",
+    "table_prefix": "x_",
+    "ssl_mode": "",
+    "dsn": ""
+  },
+  "scheme": {
+    "address": "0.0.0.0",
+    "http_port": $port,
+    "https_port": -1,
+    "force_https": false,
+    "cert_file": "",
+    "key_file": "",
+    "unix_file": "",
+    "unix_file_perm": "",
+    "enable_h2c": false
+  },
+  "temp_dir": "$cache_dir",
+  "bleve_dir": "$data_dir/data/bleve",
+  "dist_dir": "",
+  "log": {
+    "enable": true,
+    "name": "$data_dir/data/log/log.log",
+    "max_size": 50,
+    "max_backups": 30,
+    "max_age": 28,
+    "compress": false
+  },
+  "delayed_start": 0,
+  "max_connections": 0,
+  "max_concurrency": 64,
+  "tls_insecure_skip_verify": true,
+  "tasks": {
+    "download": {
+      "workers": 5,
+      "max_retry": 1
+    },
+    "transfer": {
+      "workers": 5,
+      "max_retry": 2
+    },
+    "upload": {
+      "workers": 5,
+      "max_retry": 0
+    },
+    "copy": {
+      "workers": 5,
+      "max_retry": 2
+    }
+  },
+  "cors": {
+    "allow_origins": ["*"],
+    "allow_methods": ["*"],
+    "allow_headers": ["*"]
+  }
+}
+EOF
+    else
+        # Update existing config.json settings
+        if command -v sed >/dev/null 2>&1; then
+            # Fix potential malformed https_port values (like -1-1)
+            sed -i 's/"https_port": -[0-9-]*/"https_port": -1/' "$config_file"
+            # Update http_port and temp_dir
+            sed -i "s/\"http_port\": [0-9]*/\"http_port\": $port/" "$config_file"
+            sed -i "s|\"temp_dir\": \"[^\"]*\"|\"temp_dir\": \"$cache_dir\"|" "$config_file"
+        fi
+    fi
+}
+
+start_service() {
+    config_load openlistui
+    
+    local enabled auto_start data_dir kernel_save_path openlist_binary port cache_dir
+    config_get enabled main enabled 0
+    config_get auto_start main auto_start 0
+    config_get data_dir main data_dir "/etc/openlistui"
+    config_get kernel_save_path integration kernel_save_path "/tmp/openlist"
+    config_get port main port "5244"
+    config_get cache_dir main cache_dir "/tmp/openlistui"
+    
+    [ "$enabled" -eq 0 ] && return 1
+    # auto_start only applies to boot-time startup, not manual start
+    # Manual start via init.d should work regardless of auto_start setting
+    
+    # Priority: UCI config (kernel_save_path/openlist) -> auto detection
+    local uci_binary_path="$kernel_save_path/openlist"
+    if [ -f "$uci_binary_path" ] && [ -x "$uci_binary_path" ]; then
+        openlist_binary="$uci_binary_path"
+        logger -t openlistui "Using UCI configured binary: $openlist_binary"
+    else
+        openlist_binary=$(find_openlist_binary)
+        if [ -z "$openlist_binary" ]; then
+            logger -t openlistui "ERROR: No OpenList binary found"
+            return 1
+        fi
+        logger -t openlistui "Using auto-detected binary: $openlist_binary"
+    fi
+    
+    # 检查二进制文件权限
+    if [ ! -x "$openlist_binary" ]; then
+        logger -t openlistui "ERROR: Binary not executable: $openlist_binary"
+        chmod +x "$openlist_binary" 2>/dev/null || true
+    fi
+    
+    mkdir -p "$data_dir/data"
+    mkdir -p "$cache_dir"
+    mkdir -p "$data_dir/data/log"
+    
+    # Update config.json with UCI settings
+    update_config_json "$data_dir" "$port" "$cache_dir"
+    
+    # 验证配置文件
+    local config_file="$data_dir/data/config.json"
+    if [ ! -f "$config_file" ]; then
+        logger -t openlistui "ERROR: Config file not created: $config_file"
+        return 1
+    fi
+    
+    # 检查配置文件是否为有效JSON并修复格式错误
+    if grep -q '\-[0-9]\-[0-9]' "$config_file"; then
+        logger -t openlistui "WARNING: Detected malformed config.json, regenerating..."
+        rm -f "$config_file"
+        update_config_json "$data_dir/data" "$port" "$cache_dir"
+    elif ! cat "$config_file" | grep -q '"http_port"'; then
+        logger -t openlistui "ERROR: Invalid config file: $config_file"
+        return 1
+    fi
+    
+    logger -t openlistui "Starting OpenList with binary: $openlist_binary"
+    logger -t openlistui "Data directory: $data_dir/data"
+    logger -t openlistui "Config file: $config_file"
+    
+    # 测试二进制文件是否能正常运行
+    if ! "$openlist_binary" version >/dev/null 2>&1; then
+        logger -t openlistui "ERROR: Binary test failed: $openlist_binary"
+        return 1
+    fi
+    
+    procd_open_instance
+    procd_set_param command "$openlist_binary" server --data="$data_dir/data" --no-prefix
+    procd_set_param respawn
+    procd_set_param respawn_threshold 3
+    procd_set_param respawn_timeout 10
+    procd_set_param respawn_retry 60
+    procd_set_param stderr 1
+    procd_set_param stdout 1
+    procd_set_param file /etc/config/openlistui
+    # 设置环境变量
+    procd_set_param env HOME="$data_dir" PATH="/usr/bin:/bin:/usr/sbin:/sbin"
+    procd_set_param user root
+    procd_set_param limits core="unlimited" nofile="65536"
+    procd_close_instance
+    
+    # Manage firewall rules for external access
+    manage_firewall_rules "start"
+}
+
+stop_service() {
+    # Remove firewall rules when stopping service
+    manage_firewall_rules "stop"
+}
+
+# Boot function - only start if auto_start is enabled
+boot() {
+    config_load openlistui
+    local auto_start
+    config_get auto_start main auto_start 0
+    
+    [ "$auto_start" -eq 1 ] && start
+}
+
+# Read ports from config.json
+get_ports_from_config() {
+    local data_dir=$(uci -q get openlistui.main.data_dir 2>/dev/null || echo "/etc/openlistui")
+    local config_file="$data_dir/data/config.json"
+    
+    # Default ports
+    http_port="5244"
+    ftp_port="5221"
+    sftp_port="5222"
+    s3_port="5246"
+    
+    if [ -f "$config_file" ]; then
+        # Extract ports from config.json using grep and sed
+        local temp_http=$(grep '"http_port"' "$config_file" 2>/dev/null | sed 's/.*"http_port"[[:space:]]*:[[:space:]]*\([0-9]*\).*/\1/')
+        local temp_ftp=$(grep '"listen".*:' "$config_file" 2>/dev/null | grep -A5 '"ftp"' | grep '"listen"' | sed 's/.*":\([0-9]*\)".*/\1/')
+        local temp_sftp=$(grep '"listen".*:' "$config_file" 2>/dev/null | grep -A5 '"sftp"' | grep '"listen"' | sed 's/.*":\([0-9]*\)".*/\1/')
+        local temp_s3=$(grep '"port"' "$config_file" 2>/dev/null | grep -A5 '"s3"' | grep '"port"' | sed 's/.*"port"[[:space:]]*:[[:space:]]*\([0-9]*\).*/\1/')
+        
+        [ -n "$temp_http" ] && [ "$temp_http" != "$config_file" ] && http_port="$temp_http"
+        [ -n "$temp_ftp" ] && [ "$temp_ftp" != "$config_file" ] && ftp_port="$temp_ftp"
+        [ -n "$temp_sftp" ] && [ "$temp_sftp" != "$config_file" ] && sftp_port="$temp_sftp"
+        [ -n "$temp_s3" ] && [ "$temp_s3" != "$config_file" ] && s3_port="$temp_s3"
+    fi
+}
+
+# Manage firewall rules for external access
+manage_firewall_rules() {
+    local action="$1"
+    local cors_enabled=$(uci -q get openlistui.main.cors_enabled 2>/dev/null || echo "0")
+    local rule_name="openlist_external_access"
+    
+    # Remove existing rule first
+    uci -q delete firewall."$rule_name" 2>/dev/null
+    
+    if [ "$action" = "start" ] && [ "$cors_enabled" = "1" ]; then
+        # Get ports from config.json
+        get_ports_from_config
+        local dest_ports="$http_port $ftp_port $sftp_port $s3_port"
+        
+        # Add firewall rule to allow external access
+        uci set firewall."$rule_name"=rule
+        uci set firewall."$rule_name".name="openlist"
+        uci set firewall."$rule_name".src="wan"
+        uci set firewall."$rule_name".proto="tcp"
+        uci set firewall."$rule_name".dest_port="$dest_ports"
+        uci set firewall."$rule_name".target="ACCEPT"
+        uci set firewall."$rule_name".enabled="1"
+        
+        # Commit firewall changes
+        uci commit firewall
+        
+        # Restart firewall to apply changes
+        /etc/init.d/firewall restart >/dev/null 2>&1 &
+    elif [ "$action" = "stop" ]; then
+        # Commit firewall changes to remove the rule
+        uci commit firewall
+        
+        # Restart firewall to apply changes
+        /etc/init.d/firewall restart >/dev/null 2>&1 &
+    fi
+}
+
+service_triggers() {
+    procd_add_reload_trigger "openlistui"
+}

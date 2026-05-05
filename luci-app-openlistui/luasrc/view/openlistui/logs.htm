@@ -1,0 +1,568 @@
+<%#
+Copyright 2025 Drfccv
+Licensed under the MIT License
+%>
+
+<%+header%>
+
+<style type="text/css">
+.dashboard-container {
+    width: 100%;
+    margin: 0;
+    padding: 0;
+}
+
+.main-container {
+    background: white;
+    border-radius: 16px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    padding: 30px;
+    border: 1px solid #e2e8f0;
+    margin: 0;
+}
+
+.logs-container {
+    margin: 10px 0;
+    position: relative;
+}
+
+.log-controls {
+    background: #ffffff;
+    border: 1px solid #e1e5e9;
+    border-radius: 6px;
+    padding: 16px;
+    margin-bottom: 16px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.log-controls .form-inline {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.log-controls label {
+    margin: 0;
+    font-weight: 500;
+    color: #374151;
+    font-size: 14px;
+}
+
+.log-controls select, .log-controls input {
+    min-width: 120px;
+    padding: 6px 10px;
+    border: 1px solid #d1d5db;
+    border-radius: 4px;
+    font-size: 14px;
+}
+
+.log-controls select:focus, .log-controls input:focus {
+    outline: none;
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.log-display {
+    background: #f8fafc;
+    color: #1f2937;
+    font-family: 'Consolas', 'Monaco', 'Cascadia Code', 'Roboto Mono', monospace;
+    font-size: 13px;
+    line-height: 1.5;
+    height: 600px;
+    overflow-y: auto;
+    border: 1px solid #e5e7eb;
+    border-radius: 6px;
+    padding: 16px;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+
+.log-display.paused {
+    background: #fef3c7;
+    border-color: #f59e0b;
+}
+
+.log-line {
+    margin: 0;
+    padding: 2px 0;
+    border-radius: 2px;
+}
+
+.log-line.openlist {
+    color: #059669;
+    font-weight: 500;
+}
+
+.log-line.openlistui {
+    color: #dc2626;
+}
+
+.log-line.system {
+    color: #7c3aed;
+}
+
+.log-line.error {
+    color: #dc2626;
+    background: #fef2f2;
+    padding: 2px 6px;
+    margin: 1px 0;
+    border-left: 3px solid #dc2626;
+}
+
+.log-line.warning {
+    color: #d97706;
+    background: #fffbeb;
+    padding: 2px 6px;
+    margin: 1px 0;
+    border-left: 3px solid #d97706;
+}
+
+.log-line.info {
+    color: #374151;
+}
+
+.btn-group {
+    display: inline-flex;
+    gap: 8px;
+}
+
+.btn {
+    padding: 8px 16px;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    background: #ffffff;
+    cursor: pointer;
+    text-decoration: none;
+    color: #374151;
+    font-size: 14px;
+    font-weight: 500;
+    transition: all 0.2s ease;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+
+.btn:hover {
+    background: #f9fafb;
+    border-color: #9ca3af;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.btn-primary {
+    background: #3b82f6;
+    border-color: #2563eb;
+    color: #ffffff;
+}
+
+.btn-primary:hover {
+    background: #2563eb;
+    border-color: #1d4ed8;
+}
+
+.btn-success {
+    background: #10b981;
+    border-color: #059669;
+    color: #ffffff;
+}
+
+.btn-success:hover {
+    background: #059669;
+    border-color: #047857;
+}
+
+.btn-warning {
+    background: #f59e0b;
+    border-color: #d97706;
+    color: #ffffff;
+}
+
+.btn-warning:hover {
+    background: #d97706;
+    border-color: #b45309;
+}
+
+.btn-danger {
+    background: #ef4444;
+    border-color: #dc2626;
+    color: #ffffff;
+}
+
+.btn-danger:hover {
+    background: #dc2626;
+    border-color: #b91c1c;
+}
+
+.status-indicator {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    margin-right: 8px;
+    box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.8);
+}
+
+.status-running {
+    background: #10b981;
+    box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.2);
+}
+
+.status-stopped {
+    background: #ef4444;
+    box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.2);
+}
+
+.status-paused {
+    background: #f59e0b;
+    box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.2);
+}
+
+.log-stats {
+    font-size: 12px;
+    color: #6b7280;
+    margin-top: 8px;
+    padding: 8px 12px;
+    background: #f3f4f6;
+    border-radius: 4px;
+    border-left: 3px solid #9ca3af;
+}
+
+@media (max-width: 768px) {
+    .log-controls .form-inline {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 8px;
+    }
+    
+    .log-controls select, .log-controls input {
+        min-width: 100%;
+    }
+    
+    .btn-group {
+        flex-wrap: wrap;
+        gap: 6px;
+    }
+    
+    .log-display {
+        height: 400px;
+        font-size: 12px;
+        padding: 12px;
+    }
+}
+
+.log-display::-webkit-scrollbar {
+    width: 8px;
+}
+
+.log-display::-webkit-scrollbar-track {
+    background: #f1f5f9;
+    border-radius: 4px;
+}
+
+.log-display::-webkit-scrollbar-thumb {
+    background: #cbd5e1;
+    border-radius: 4px;
+}
+
+.log-display::-webkit-scrollbar-thumb:hover {
+    background: #94a3b8;
+}
+</style>
+
+<script type="text/javascript">//<![CDATA[
+var logAutoRefresh = false;
+var logRefreshInterval = null;
+var logPaused = false;
+var logBuffer = [];
+var maxLogLines = 1000;
+var currentFilter = 'all';
+
+function getLogTypeClass(line) {
+    if (line.includes('[OpenList]') || line.includes('openlist')) return 'openlist';
+    if (line.includes('[OpenListUI]') || line.includes('openlistui')) return 'openlistui';
+    if (line.includes('[System]')) return 'system';
+    if (line.toLowerCase().includes('error')) return 'error';
+    if (line.toLowerCase().includes('warning') || line.toLowerCase().includes('warn')) return 'warning';
+    return 'info';
+}
+
+function formatLogLine(line) {
+    var className = getLogTypeClass(line);
+    return '<div class="log-line ' + className + '">' + line.replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</div>';
+}
+
+function updateLogDisplay() {
+    var container = document.getElementById('log-container');
+    var shouldScroll = container.scrollTop >= container.scrollHeight - container.clientHeight - 10;
+    
+    var logSource = document.getElementById('log-source').value;
+    var logFilter = document.getElementById('log-filter').value;
+    
+    var filteredLogs = logBuffer.filter(function(line) {
+        // 首先按日志源过滤
+        var sourceMatch = true;
+        if (logSource === 'openlist') {
+            sourceMatch = line.includes('[OpenList]');
+        } else if (logSource === 'openlistui') {
+            sourceMatch = line.includes('[OpenListUI]');
+        }
+        
+        if (!sourceMatch) return false;
+        
+        // 然后按日志级别过滤
+        if (logFilter === 'all') return true;
+        if (logFilter === 'error') return line.toLowerCase().includes('error');
+        if (logFilter === 'warning') return line.toLowerCase().includes('warning') || line.toLowerCase().includes('warn');
+        if (logFilter === 'info') return !line.toLowerCase().includes('error') && !line.toLowerCase().includes('warning');
+        
+        return true;
+    });
+    
+    container.innerHTML = filteredLogs.map(formatLogLine).join('');
+    
+    if (shouldScroll && !logPaused) {
+        container.scrollTop = container.scrollHeight;
+    }
+    
+    updateLogStats(filteredLogs.length, logBuffer.length);
+}
+
+function updateLogStats(filtered, total) {
+    var stats = document.getElementById('log-stats');
+    stats.innerHTML = '<%:Showing%> ' + filtered + ' / ' + total + ' <%:log lines%>';
+}
+
+function loadLogConfig() {
+    var xhr = new XMLHttpRequest();
+    xhr.open('GET', '<%=url("admin/services/openlistui/log_config_get")%>', true);
+    
+    xhr.onreadystatechange = function() {
+        if (xhr.readyState === 4) {
+            if (xhr.status === 200) {
+                try {
+                    var response = JSON.parse(xhr.responseText);
+                    if (response.success) {
+                        var configInfo = '<%:Path%>: ' + response.log_path +
+                    ' | <%:Current Size%>: ' + (response.current_size || 0) + 'KB' +
+                    ' | <%:Max Size%>: ' + response.max_size + 'MB' +
+                    ' | <%:Max Backups%>: ' + response.max_backups + '<%:files%>' +
+                    ' | <%:Retention Days%>: ' + response.max_age + '<%:days%>' +
+                    ' | <%:Compress%>: ' + (response.compress ? '<%:Yes%>' : '<%:No%>') +
+                    ' | <%:Enabled%>: ' + (response.enable ? '<%:Yes%>' : '<%:No%>');
+                        document.getElementById('log-config-info').textContent = configInfo;
+                    }
+                } catch (e) {
+                    console.error('Error parsing log config response:', e);
+                    document.getElementById('log-config-info').textContent = '<%:Failed to get configuration info%>';
+                }
+            } else {
+                document.getElementById('log-config-info').textContent = '<%:Failed to get configuration info%>';
+            }
+        }
+    };
+    
+    xhr.send();
+}
+
+function loadLogs() {
+    var source = document.getElementById('log-source').value;
+    var lines = document.getElementById('log-lines').value || 100;
+    
+    // 显示加载状态
+        document.getElementById('log-stats').innerHTML = '<%:Loading logs%>...';
+    
+    XHR.get('<%=url("admin/services/openlistui/logs_get")%>?source=' + source + '&lines=' + lines, null, function(x, data) {
+        if (data && data.logs) {
+            logBuffer = data.logs;
+            if (logBuffer.length > maxLogLines) {
+                logBuffer = logBuffer.slice(-maxLogLines);
+            }
+            updateLogDisplay();
+        } else {
+            logBuffer = [];
+            updateLogDisplay();
+            if (!data) {
+                showMessage('error', '<%:Failed to get logs: Server not responding%>');
+            } else if (!data.logs) {
+                showMessage('error', '<%:Failed to get logs: Invalid response format%>');
+            }
+        }
+    }, function(x, error) {
+        logBuffer = [];
+        updateLogDisplay();
+        showMessage('error', '<%:Failed to get logs: Network error (status code%>: ' + x.status + ')');
+    });
+}
+
+function clearLogs() {
+    if (confirm('<%:Are you sure you want to clear the logs%>？')) {
+        var source = document.getElementById('log-source').value;
+        XHR.post('<%=url("admin/services/openlistui/logs_clear")%>?source=' + source, null, function(x, data) {
+            if (data && data.success) {
+                showMessage('success', data.message);
+                logBuffer = [];
+                updateLogDisplay();
+                setTimeout(loadLogs, 1000);
+            } else {
+                showMessage('error', data ? data.message : '<%:Operation failed%>');
+            }
+        });
+    }
+}
+
+function toggleAutoRefresh() {
+    logAutoRefresh = !logAutoRefresh;
+    var button = document.getElementById('auto-refresh-btn');
+    var indicator = document.getElementById('refresh-indicator');
+    
+    if (logAutoRefresh) {
+        button.textContent = '<%:Stop Auto Refresh%>';
+        button.className = 'btn btn-warning';
+        indicator.className = 'status-indicator status-running';
+        logRefreshInterval = setInterval(loadLogs, 3000);
+    } else {
+        button.textContent = '<%:Auto Refresh%>';
+        button.className = 'btn btn-success';
+        indicator.className = 'status-indicator status-stopped';
+        if (logRefreshInterval) {
+            clearInterval(logRefreshInterval);
+            logRefreshInterval = null;
+        }
+    }
+}
+
+function togglePause() {
+    logPaused = !logPaused;
+    var button = document.getElementById('pause-btn');
+    var container = document.getElementById('log-container');
+    var indicator = document.getElementById('pause-indicator');
+    
+    if (logPaused) {
+        button.textContent = '<%:Continue%>';
+        button.className = 'btn btn-warning';
+        container.className = 'log-display paused';
+        indicator.className = 'status-indicator status-paused';
+    } else {
+        button.textContent = '<%:Pause%>';
+        button.className = 'btn btn-primary';
+        container.className = 'log-display';
+        indicator.className = 'status-indicator status-running';
+    }
+}
+
+function filterLogs() {
+    updateLogDisplay();
+}
+
+function downloadLogs() {
+    var source = document.getElementById('log-source').value;
+    var content = logBuffer.join('\n');
+    var blob = new Blob([content], { type: 'text/plain' });
+    var url = window.URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = 'openlistui-' + source + '-logs-' + new Date().toISOString().slice(0, 19).replace(/:/g, '-') + '.txt';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    window.URL.revokeObjectURL(url);
+}
+
+function showMessage(type, message) {
+    var alertClass = type === 'success' ? 'alert-success' : 'alert-danger';
+    var alertHtml = '<div class="alert ' + alertClass + ' alert-dismissible fade in" role="alert">' +
+                   '<button type="button" class="close" data-dismiss="alert" aria-label="Close">' +
+                   '<span aria-hidden="true">&times;</span>' +
+                   '</button>' + message + '</div>';
+    
+    var container = document.querySelector('.logs-container');
+    container.insertAdjacentHTML('afterbegin', alertHtml);
+    
+    setTimeout(function() {
+        var alert = container.querySelector('.alert');
+        if (alert) alert.remove();
+    }, 3000);
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    loadLogConfig();
+    loadLogs();
+    
+    document.getElementById('log-source').addEventListener('change', function() {
+        // 日志源切换时更新显示
+        updateLogDisplay();
+    });
+    document.getElementById('log-lines').addEventListener('change', function() {
+        loadLogs();
+    });
+    document.getElementById('log-filter').addEventListener('change', function() {
+        filterLogs();
+    });
+});
+
+window.addEventListener('beforeunload', function() {
+    if (logRefreshInterval) {
+        clearInterval(logRefreshInterval);
+    }
+});
+//]]></script>
+
+<div class="dashboard-container">
+    <div class="main-container">
+        <div class="logs-container">
+                <div class="log-controls">
+                    <div class="form-inline">
+                        <label for="log-source"><%:Log Source%>:</label>
+                        <select id="log-source" class="form-control">
+                            <option value="all"><%:All Logs%></option>
+                            <option value="openlist">OpenList</option>
+                            <option value="openlistui">OpenListUI</option>
+                        </select>
+                        
+                        <label for="log-lines"><%:Display Lines%>:</label>
+                        <select id="log-lines" class="form-control">
+                            <option value="50">50</option>
+                            <option value="100" selected>100</option>
+                            <option value="200">200</option>
+                            <option value="500">500</option>
+                            <option value="1000">1000</option>
+                        </select>
+                        
+                        <label for="log-filter"><%:Filter%>:</label>
+                        <select id="log-filter" class="form-control">
+                            <option value="all"><%:All%></option>
+                            <option value="error"><%:Error%></option>
+                            <option value="warning"><%:Warning%></option>
+                            <option value="info"><%:Info%></option>
+                        </select>
+                        
+                        <div class="btn-group">
+                            <button id="auto-refresh-btn" class="btn btn-success" onclick="toggleAutoRefresh()">
+                                <span id="refresh-indicator" class="status-indicator status-stopped"></span>
+                                <%:Auto Refresh%>
+                            </button>
+                            
+                            <button id="pause-btn" class="btn btn-primary" onclick="togglePause()">
+                                <span id="pause-indicator" class="status-indicator status-running"></span>
+                                <%:Pause%>
+                            </button>
+                            
+                            <button class="btn btn-primary" onclick="loadLogs()"><%:Manual Refresh%></button>
+                            <button class="btn btn-warning" onclick="downloadLogs()"><%:Download Logs%></button>
+                            <button class="btn btn-danger" onclick="clearLogs()"><%:Clear Logs%></button>
+                        </div>
+                    </div>
+                </div>
+                
+                <div id="log-info" class="log-info" style="margin-bottom: 10px; padding: 10px; background: #f8f9fa; border-radius: 4px; font-size: 12px; color: #666;">
+                    <strong><%:Log Configuration Info%>:</strong> <span id="log-config-info"><%:Loading%>...</span>
+                </div>
+                
+                <div id="log-container" class="log-display"></div>
+                
+                <div id="log-stats" class="log-stats"><%:Loading%>...</div>
+        </div>
+    </div>
+</div>
+
+<%+footer%>

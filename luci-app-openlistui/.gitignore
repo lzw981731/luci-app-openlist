@@ -1,0 +1,16 @@
+# IDE files
+.trae/
+
+# Build files
+*.o
+*.so
+*.a
+
+# Temporary files
+*.tmp
+*.bak
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
