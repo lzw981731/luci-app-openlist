@@ -31,12 +31,12 @@ echo -e "${GREEN}系统架构: ${ARCH}${NC}"
 # 3. 选择下载源
 echo "--------------------------------"
 echo "1) 原始 GitHub 地址"
-echo "2) 国内加速下载 (gh.981731.xyz)"
+echo "2) 国内加速下载"
 echo "--------------------------------"
 read -p "请输入数字 [1-2]: " DOWNLOAD_CHOICE
 
 PROXY=""
-[ "$DOWNLOAD_CHOICE" = "2" ] && PROXY="https://gh.981731.xyz/"
+[ "$DOWNLOAD_CHOICE" = "2" ] && PROXY="https://gh-proxy.com/"
 
 # 4. 获取版本信息
 echo -e "${BLUE}>>> 正在检索最新版本并匹配 ${KEYWORD}...${NC}"
