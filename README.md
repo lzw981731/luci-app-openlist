@@ -94,7 +94,7 @@
 
 - 执行安装脚本（支持多架构）
   ```shell
-  sh -c "$(curl -ksS https://raw.githubusercontent.com/lzw981731/luci-app-openlist/main/install.sh)"
+  sh -c "$(curl -ksS https://raw.githubusercontent.com/lzw981731/luci-app-openlist/main/install_openlist.sh)"
   ```
 
 --------------
