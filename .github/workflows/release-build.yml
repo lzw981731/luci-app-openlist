@@ -3,112 +3,132 @@ name: Build Packages
 on:
   push:
     tags:
-      - "*"
+      - "v*"
   schedule:
     - cron: '0 2 * * 0'  # 每周日 UTC 02:00 (北京时间 10:00)
+  workflow_dispatch:  # 允许手动触发
 
 jobs:
   check-update:
     name: Check for Updates
-    if: github.event_name == 'schedule'
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     outputs:
       has_update: ${{ steps.check.outputs.has_update }}
-      new_version: ${{ steps.check.outputs.new_version }}
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Check OpenList latest release
-        id: check
-        run: |
-          # 获取当前 Makefile 中的版本
-          CURRENT_VERSION=$(grep 'PKG_VERSION:=' openlist/Makefile | head -1 | sed 's/.*:=//')
-          echo "Current version: $CURRENT_VERSION"
-
-          # 获取 GitHub 最新 release 版本
-          LATEST_VERSION=$(curl -s https://api.github.com/repos/lzw981731/OpenList/releases/latest | jq -r '.tag_name' | sed 's/^v//')
-          echo "Latest version: $LATEST_VERSION"
-
-          # 比较版本
-          if [ "$CURRENT_VERSION" != "$LATEST_VERSION" ]; then
-            echo "New version available: $LATEST_VERSION"
-            echo "has_update=true" >> $GITHUB_OUTPUT
-            echo "new_version=$LATEST_VERSION" >> $GITHUB_OUTPUT
-          else
-            echo "No update available"
-            echo "has_update=false" >> $GITHUB_OUTPUT
-          fi
-
-  check-luci-update:
-    name: Check LuCI App Updates
-    if: github.event_name == 'schedule'
-    runs-on: ubuntu-latest
-    outputs:
-      has_update: ${{ steps.check.outputs.has_update }}
-      new_version: ${{ steps.check.outputs.new_version }}
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Check LuCI app latest release
-        id: check
-        run: |
-          # 获取当前 Makefile 中的版本
-          CURRENT_VERSION=$(grep 'PKG_VERSION:=' luci-app-openlistui/Makefile | head -1 | sed 's/.*:=//')
-          echo "Current LuCI version: $CURRENT_VERSION"
-
-          # 获取 GitHub 最新 release 版本
-          LATEST_VERSION=$(curl -s https://api.github.com/repos/drfccv/luci-app-openlistui/releases/latest | jq -r '.tag_name' | sed 's/^v//')
-          echo "Latest LuCI version: $LATEST_VERSION"
-
-          # 比较版本
-          if [ "$CURRENT_VERSION" != "$LATEST_VERSION" ]; then
-            echo "New LuCI version available: $LATEST_VERSION"
-            echo "has_update=true" >> $GITHUB_OUTPUT
-            echo "new_version=$LATEST_VERSION" >> $GITHUB_OUTPUT
-          else
-            echo "No LuCI update available"
-            echo "has_update=false" >> $GITHUB_OUTPUT
-          fi
-
-  update-luci:
-    name: Update LuCI App Code
-    needs: check-luci-update
-    if: needs.check-luci-update.outputs.has_update == 'true'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
+      upstream_version: ${{ steps.check.outputs.upstream_version }}
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Update LuCI app version in Makefile
+      - name: Check OpenList upstream commit
+        id: check
         run: |
-          NEW_VERSION=${{ needs.check-luci-update.outputs.new_version }}
-          echo "Updating LuCI app version to $NEW_VERSION"
-          
-          # 更新 PKG_VERSION
-          sed -i "s/PKG_VERSION:=.*/PKG_VERSION:=$NEW_VERSION/" luci-app-openlistui/Makefile
-          
-          # 重置 PKG_RELEASE 为 1
-          sed -i "s/PKG_RELEASE:=.*/PKG_RELEASE:=1/" luci-app-openlistui/Makefile
-          
-          # 显示更改
-          git diff luci-app-openlistui/Makefile
+          # 获取当前 Makefile 中记录的上游 commit SHA
+          CURRENT_SHA=$(grep 'PKG_SOURCE_VERSION:=' openlist/Makefile | head -1 | sed 's/.*:=//')
+          echo "Current upstream SHA: $CURRENT_SHA"
 
-      - name: Commit and push changes
+          # 获取上游仓库最新 commit SHA
+          UPSTREAM_SHA=$(curl -s https://api.github.com/repos/lzw981731/OpenList/commits/main | jq -r '.sha')
+          echo "Latest upstream SHA: $UPSTREAM_SHA"
+
+          # 比较 SHA
+          if [ "$CURRENT_SHA" != "$UPSTREAM_SHA" ]; then
+            echo "New upstream commit detected"
+            echo "has_update=true" >> $GITHUB_OUTPUT
+            echo "upstream_version=$UPSTREAM_SHA" >> $GITHUB_OUTPUT
+          else
+            echo "Already up to date"
+            echo "has_update=false" >> $GITHUB_OUTPUT
+          fi
+
+  auto-release:
+    name: Auto Release
+    needs: check-update
+    if: needs.check-update.outputs.has_update == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      new_tag: ${{ steps.version.outputs.new_tag }}
+      new_version: ${{ steps.version.outputs.new_version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Calculate new version
+        id: version
         run: |
+          # 获取当前最新的 tag
+          CURRENT_TAG=$(git tag -l 'v*' --sort=-version:refname | head -1)
+          if [ -z "$CURRENT_TAG" ]; then
+            CURRENT_TAG="v1.0.0"
+          fi
+          echo "Current tag: $CURRENT_TAG"
+
+          # 解析版本号并递增 patch 版本
+          VERSION=${CURRENT_TAG#v}
+          MAJOR=$(echo $VERSION | cut -d. -f1)
+          MINOR=$(echo $VERSION | cut -d. -f2)
+          PATCH=$(echo $VERSION | cut -d. -f3)
+          NEW_PATCH=$((PATCH + 1))
+          NEW_VERSION="${MAJOR}.${MINOR}.${NEW_PATCH}"
+          NEW_TAG="v${NEW_VERSION}"
+
+          echo "New tag: $NEW_TAG"
+          echo "new_tag=$NEW_TAG" >> $GITHUB_OUTPUT
+          echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
+
+      - name: Update Makefile with new version
+        run: |
+          NEW_VERSION=${{ steps.version.outputs.new_version }}
+          UPSTREAM_SHA=${{ needs.check-update.outputs.upstream_version }}
+
+          echo "Updating to version $NEW_VERSION (SHA: $UPSTREAM_SHA)"
+
+          # 获取上游 tarball hash
+          TARBALL_URL="https://codeload.github.com/lzw981731/OpenList/tar.gz/v${NEW_VERSION}"
+          echo "Tarball URL: $TARBALL_URL"
+
+          # 下载并计算 hash
+          curl -sL "$TARBALL_URL" -o /tmp/openlist.tar.gz
+          NEW_HASH=$(sha256sum /tmp/openlist.tar.gz | cut -d' ' -f1)
+          echo "New hash: $NEW_HASH"
+
+          # 更新 Makefile
+          sed -i "s/PKG_VERSION:=.*/PKG_VERSION:=$NEW_VERSION/" openlist/Makefile
+          sed -i "s/PKG_WEB_VERSION:=.*/PKG_WEB_VERSION:=$NEW_VERSION/" openlist/Makefile
+          sed -i "s/PKG_HASH:=.*/PKG_HASH:=$NEW_HASH/" openlist/Makefile
+          sed -i "s|PKG_SOURCE_URL:=.*|PKG_SOURCE_URL:=https://codeload.github.com/lzw981731/OpenList/tar.gz/v\$\(PKG_VERSION\)?" openlist/Makefile
+
+          # 显示更新后的 Makefile
+          grep -E 'PKG_VERSION|PKG_HASH|PKG_SOURCE_URL' openlist/Makefile
+
+      - name: Create tag and release
+        run: |
+          NEW_TAG=${{ steps.version.outputs.new_tag }}
+          NEW_VERSION=${{ steps.version.outputs.new_version }}
+          UPSTREAM_SHA=${{ needs.check-update.outputs.upstream_version }}
+
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          
-          git add luci-app-openlistui/Makefile
-          git commit -m "chore: update LuCI app to v${{ needs.check-luci-update.outputs.new_version }}"
-          git push
+
+          # 提交更改
+          git add openlist/Makefile
+          git commit -m "chore: update OpenList to v$NEW_VERSION ($UPSTREAM_SHA)"
+
+          # 创建 tag
+          git tag -a "$NEW_TAG" -m "Release $NEW_VERSION"
+          git push origin main
+          git push origin "$NEW_TAG"
+
+          echo "Created tag: $NEW_TAG"
 
   build:
     name: Build ${{ matrix.arch }}-${{ matrix.sdk }}
-    needs: [check-update, check-luci-update]
-    if: github.event_name != 'schedule' || needs.check-update.outputs.has_update == 'true' || needs.check-luci-update.outputs.has_update == 'true'
+    needs: auto-release
+    if: github.event_name == 'push' || needs.auto-release.result == 'success'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -155,6 +175,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ needs.auto-release.outputs.new_tag || github.ref_name }}
           fetch-depth: 0
 
       - name: Build with Static Linking
@@ -195,7 +216,7 @@ jobs:
       - name: Upload packages
         uses: ncipollo/release-action@v1
         with:
-          name: ${{ github.ref_name }}
+          name: ${{ needs.auto-release.outputs.new_tag || github.ref_name }}
           token: ${{ secrets.GITHUB_TOKEN }}
           allowUpdates: true
           replacesArtifacts: true
