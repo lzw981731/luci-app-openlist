@@ -1,0 +1,168 @@
+name: Sync Upstream Release
+
+on:
+  # 鐩戝惉涓婃父浠撳簱鐨?release 浜嬩欢
+  repository_dispatch:
+    types: [upstream-release]
+  # 鎴栬€呮墜鍔ㄨЕ鍙?  workflow_dispatch:
+    inputs:
+      version:
+        description: '鎸囧畾鐗堟湰鍙凤紙鐣欑┖鍒欒嚜鍔ㄦ娴嬫渶鏂扮増鏈級'
+        required: false
+        type: string
+
+env:
+  UPSTREAM_REPO: lzw981731/OpenList
+  FRONTEND_REPO: OpenListTeam/OpenList-Frontend
+
+jobs:
+  check-and-update:
+    name: Check and Update
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      new_version: ${{ steps.check.outputs.new_version }}
+      updated: ${{ steps.check.outputs.updated }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check for new version
+        id: check
+        run: |
+          # 鑾峰彇褰撳墠 Makefile 涓殑鐗堟湰
+          CURRENT_VERSION=$(grep 'PKG_VERSION:=' openlist/Makefile | head -1 | sed 's/.*:=//')
+          echo "Current version: $CURRENT_VERSION"
+
+          # 鑾峰彇涓婃父鏈€鏂?release
+          if [ -n "${{ inputs.version }}" ]; then
+            NEW_VERSION="${{ inputs.version }}"
+            echo "Using specified version: $NEW_VERSION"
+          else
+            NEW_VERSION=$(curl -s https://api.github.com/repos/${{ env.UPSTREAM_REPO }}/releases | jq -r '.[0].tag_name' | sed 's/^v//')
+            echo "Latest upstream version: $NEW_VERSION"
+          fi
+
+          # 姣旇緝鐗堟湰
+          if [ "$CURRENT_VERSION" = "$NEW_VERSION" ]; then
+            echo "Already up to date"
+            echo "updated=false" >> $GITHUB_OUTPUT
+          else
+            echo "New version available: $NEW_VERSION"
+            echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
+            echo "updated=true" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Get upstream commit SHA
+        if: steps.check.outputs.updated == 'true'
+        id: sha
+        run: |
+          # 鑾峰彇鏂扮増鏈?tag 瀵瑰簲鐨?commit SHA
+          NEW_VERSION=${{ steps.check.outputs.new_version }}
+          UPSTREAM_SHA=$(curl -s https://api.github.com/repos/${{ env.UPSTREAM_REPO }}/git/ref/tags/v${NEW_VERSION} | jq -r '.object.sha')
+          echo "Upstream SHA: $UPSTREAM_SHA"
+          echo "upstream_sha=$UPSTREAM_SHA" >> $GITHUB_OUTPUT
+
+      - name: Get source tarball hash
+        if: steps.check.outputs.updated == 'true'
+        id: hash
+        run: |
+          NEW_VERSION=${{ steps.check.outputs.new_version }}
+          echo "Downloading source tarball..."
+          curl -sL "https://codeload.github.com/${{ env.UPSTREAM_REPO }}/tar.gz/v${NEW_VERSION}" -o /tmp/openlist.tar.gz
+          NEW_HASH=$(sha256sum /tmp/openlist.tar.gz | cut -d' ' -f1)
+          echo "Source hash: $NEW_HASH"
+          echo "source_hash=$NEW_HASH" >> $GITHUB_OUTPUT
+
+      - name: Get frontend hash
+        if: steps.check.outputs.updated == 'true'
+        id: frontend
+        run: |
+          NEW_VERSION=${{ steps.check.outputs.new_version }}
+          echo "Downloading frontend tarball..."
+          curl -sL "https://github.com/${{ env.FRONTEND_REPO }}/releases/download/v${NEW_VERSION}/openlist-frontend-dist-lite-v${NEW_VERSION}.tar.gz" -o /tmp/frontend.tar.gz
+          FRONTEND_HASH=$(sha256sum /tmp/frontend.tar.gz | cut -d' ' -f1)
+          echo "Frontend hash: $FRONTEND_HASH"
+          echo "frontend_hash=$FRONTEND_HASH" >> $GITHUB_OUTPUT
+
+      - name: Update Makefile
+        if: steps.check.outputs.updated == 'true'
+        run: |
+          NEW_VERSION=${{ steps.check.outputs.new_version }}
+          UPSTREAM_SHA=${{ steps.sha.outputs.upstream_sha }}
+          SOURCE_HASH=${{ steps.hash.outputs.source_hash }}
+          FRONTEND_HASH=${{ steps.frontend.outputs.frontend_hash }}
+
+          echo "Updating Makefile to version $NEW_VERSION"
+
+          # 鏇存柊鐗堟湰鍙?          sed -i "s/PKG_VERSION:=.*/PKG_VERSION:=$NEW_VERSION/" openlist/Makefile
+          sed -i "s/PKG_WEB_VERSION:=.*/PKG_WEB_VERSION:=$NEW_VERSION/" openlist/Makefile
+
+          # 鏇存柊 commit SHA
+          sed -i "s/PKG_SOURCE_VERSION:=.*/PKG_SOURCE_VERSION:=$UPSTREAM_SHA/" openlist/Makefile
+
+          # 鏇存柊 hash
+          sed -i "s/PKG_HASH:=.*/PKG_HASH:=$SOURCE_HASH/" openlist/Makefile
+
+          # 鏇存柊鍓嶇 hash
+          sed -i "s/HASH:=.*/HASH:=$FRONTEND_HASH/" openlist/Makefile
+
+          echo "Makefile updated:"
+          grep -E 'PKG_VERSION|PKG_HASH|PKG_SOURCE_VERSION|PKG_WEB_VERSION' openlist/Makefile
+
+      - name: Commit changes
+        if: steps.check.outputs.updated == 'true'
+        run: |
+          NEW_VERSION=${{ steps.check.outputs.new_version }}
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          git add openlist/Makefile
+          git commit -m "chore: update OpenList to v$NEW_VERSION
+
+- Updated from upstream: ${{ env.UPSTREAM_REPO }}
+- Source hash: ${{ steps.hash.outputs.source_hash }}
+- Frontend hash: ${{ steps.frontend.outputs.frontend_hash }}"
+
+          git push origin main
+
+      - name: Create tag and release
+        if: steps.check.outputs.updated == 'true'
+        run: |
+          NEW_VERSION=${{ steps.check.outputs.new_version }}
+          UPSTREAM_SHA=${{ steps.sha.outputs.upstream_sha }}
+
+          # 鍒涘缓 tag
+          git tag -a "v$NEW_VERSION" -m "Release v$NEW_VERSION
+
+Updated from upstream: ${{ env.UPSTREAM_REPO }}
+Upstream commit: $UPSTREAM_SHA"
+
+          git push origin "v$NEW_VERSION"
+
+          # 鍒涘缓 release
+          gh release create "v$NEW_VERSION" \
+            --title "v$NEW_VERSION" \
+            --notes "## OpenList v$NEW_VERSION
+
+Updated from upstream: ${{ env.UPSTREAM_REPO }}
+Upstream commit: \`$UPSTREAM_SHA\`
+
+### Changes
+- Synced from upstream repository
+- Custom driver guangyapan preserved" \
+            --verify-tag
+
+      - name: Trigger build workflow
+        if: steps.check.outputs.updated == 'true'
+        run: |
+          # 瑙﹀彂鏋勫缓宸ヤ綔娴?          curl -X POST \
+            -H "Accept: application/vnd.github.v3+json" \
+            -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            https://api.github.com/repos/${{ github.repository }}/actions/workflows/release-build.yml/dispatches \
+            -d "{\"ref\": \"refs/tags/v${{ steps.check.outputs.new_version }}\"}"
+
+          echo "Build workflow triggered"
