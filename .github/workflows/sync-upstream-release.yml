@@ -1,16 +1,15 @@
 name: Sync Upstream Release
 
 on:
-  # 鐩戝惉涓婃父浠撳簱鐨?release 浜嬩欢
   repository_dispatch:
     types: [upstream-release]
-  # 鎴栬€呮墜鍔ㄨЕ鍙?  workflow_dispatch:
+  workflow_dispatch:
     inputs:
       version:
-        description: '鎸囧畾鐗堟湰鍙凤紙鐣欑┖鍒欒嚜鍔ㄦ娴嬫渶鏂扮増鏈級'
+        description: 'Version to sync (leave empty for latest)'
         required: false
         type: string
-  # 瀹氭椂妫€鏌ワ紙姣忓ぉ鍖椾含鏃堕棿 03:00锛?  schedule:
+  schedule:
     - cron: '0 19 * * *'
 
 env:
@@ -34,11 +33,9 @@ jobs:
       - name: Check for new version
         id: check
         run: |
-          # 鑾峰彇褰撳墠 Makefile 涓殑鐗堟湰
           CURRENT_VERSION=$(grep 'PKG_VERSION:=' openlist/Makefile | head -1 | sed 's/.*:=//')
           echo "Current version: $CURRENT_VERSION"
 
-          # 鑾峰彇涓婃父鏈€鏂?release
           if [ -n "${{ inputs.version }}" ]; then
             NEW_VERSION="${{ inputs.version }}"
             echo "Using specified version: $NEW_VERSION"
@@ -47,7 +44,6 @@ jobs:
             echo "Latest upstream version: $NEW_VERSION"
           fi
 
-          # 姣旇緝鐗堟湰
           if [ "$CURRENT_VERSION" = "$NEW_VERSION" ]; then
             echo "Already up to date"
             echo "updated=false" >> $GITHUB_OUTPUT
@@ -61,7 +57,6 @@ jobs:
         if: steps.check.outputs.updated == 'true'
         id: sha
         run: |
-          # 鑾峰彇鏂扮増鏈?tag 瀵瑰簲鐨?commit SHA
           NEW_VERSION=${{ steps.check.outputs.new_version }}
           UPSTREAM_SHA=$(curl -s https://api.github.com/repos/${{ env.UPSTREAM_REPO }}/git/ref/tags/v${NEW_VERSION} | jq -r '.object.sha')
           echo "Upstream SHA: $UPSTREAM_SHA"
@@ -99,16 +94,10 @@ jobs:
 
           echo "Updating Makefile to version $NEW_VERSION"
 
-          # 鏇存柊鐗堟湰鍙?          sed -i "s/PKG_VERSION:=.*/PKG_VERSION:=$NEW_VERSION/" openlist/Makefile
+          sed -i "s/PKG_VERSION:=.*/PKG_VERSION:=$NEW_VERSION/" openlist/Makefile
           sed -i "s/PKG_WEB_VERSION:=.*/PKG_WEB_VERSION:=$NEW_VERSION/" openlist/Makefile
-
-          # 鏇存柊 commit SHA
           sed -i "s/PKG_SOURCE_VERSION:=.*/PKG_SOURCE_VERSION:=$UPSTREAM_SHA/" openlist/Makefile
-
-          # 鏇存柊 hash
           sed -i "s/PKG_HASH:=.*/PKG_HASH:=$SOURCE_HASH/" openlist/Makefile
-
-          # 鏇存柊鍓嶇 hash
           sed -i "s/HASH:=.*/HASH:=$FRONTEND_HASH/" openlist/Makefile
 
           echo "Makefile updated:"
@@ -137,7 +126,6 @@ jobs:
           NEW_VERSION=${{ steps.check.outputs.new_version }}
           UPSTREAM_SHA=${{ steps.sha.outputs.upstream_sha }}
 
-          # 鍒涘缓 tag
           git tag -a "v$NEW_VERSION" -m "Release v$NEW_VERSION
 
 Updated from upstream: ${{ env.UPSTREAM_REPO }}
@@ -145,7 +133,6 @@ Upstream commit: $UPSTREAM_SHA"
 
           git push origin "v$NEW_VERSION"
 
-          # 鍒涘缓 release
           gh release create "v$NEW_VERSION" \
             --title "v$NEW_VERSION" \
             --notes "## OpenList v$NEW_VERSION
@@ -161,7 +148,7 @@ Upstream commit: \`$UPSTREAM_SHA\`
       - name: Trigger build workflow
         if: steps.check.outputs.updated == 'true'
         run: |
-          # 瑙﹀彂鏋勫缓宸ヤ綔娴?          curl -X POST \
+          curl -X POST \
             -H "Accept: application/vnd.github.v3+json" \
             -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
             https://api.github.com/repos/${{ github.repository }}/actions/workflows/release-build.yml/dispatches \
