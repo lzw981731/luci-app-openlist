@@ -53,6 +53,8 @@ jobs:
 
       - name: Commit and tag
         if: steps.check.outputs.updated == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           VER=${{ steps.check.outputs.new_version }}
           git config user.name "github-actions[bot]"
