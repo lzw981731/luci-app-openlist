@@ -39,10 +39,76 @@ jobs:
             echo "has_update=false" >> $GITHUB_OUTPUT
           fi
 
+  check-luci-update:
+    name: Check LuCI App Updates
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    outputs:
+      has_update: ${{ steps.check.outputs.has_update }}
+      new_version: ${{ steps.check.outputs.new_version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check LuCI app latest release
+        id: check
+        run: |
+          # 获取当前 Makefile 中的版本
+          CURRENT_VERSION=$(grep 'PKG_VERSION:=' luci-app-openlistui/Makefile | head -1 | sed 's/.*:=//')
+          echo "Current LuCI version: $CURRENT_VERSION"
+
+          # 获取 GitHub 最新 release 版本
+          LATEST_VERSION=$(curl -s https://api.github.com/repos/drfccv/luci-app-openlistui/releases/latest | jq -r '.tag_name' | sed 's/^v//')
+          echo "Latest LuCI version: $LATEST_VERSION"
+
+          # 比较版本
+          if [ "$CURRENT_VERSION" != "$LATEST_VERSION" ]; then
+            echo "New LuCI version available: $LATEST_VERSION"
+            echo "has_update=true" >> $GITHUB_OUTPUT
+            echo "new_version=$LATEST_VERSION" >> $GITHUB_OUTPUT
+          else
+            echo "No LuCI update available"
+            echo "has_update=false" >> $GITHUB_OUTPUT
+          fi
+
+  update-luci:
+    name: Update LuCI App Code
+    needs: check-luci-update
+    if: needs.check-luci-update.outputs.has_update == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Update LuCI app version in Makefile
+        run: |
+          NEW_VERSION=${{ needs.check-luci-update.outputs.new_version }}
+          echo "Updating LuCI app version to $NEW_VERSION"
+          
+          # 更新 PKG_VERSION
+          sed -i "s/PKG_VERSION:=.*/PKG_VERSION:=$NEW_VERSION/" luci-app-openlistui/Makefile
+          
+          # 重置 PKG_RELEASE 为 1
+          sed -i "s/PKG_RELEASE:=.*/PKG_RELEASE:=1/" luci-app-openlistui/Makefile
+          
+          # 显示更改
+          git diff luci-app-openlistui/Makefile
+
+      - name: Commit and push changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          
+          git add luci-app-openlistui/Makefile
+          git commit -m "chore: update LuCI app to v${{ needs.check-luci-update.outputs.new_version }}"
+          git push
+
   build:
     name: Build ${{ matrix.arch }}-${{ matrix.sdk }}
-    needs: check-update
-    if: github.event_name != 'schedule' || needs.check-update.outputs.has_update == 'true'
+    needs: [check-update, check-luci-update]
+    if: github.event_name != 'schedule' || needs.check-update.outputs.has_update == 'true' || needs.check-luci-update.outputs.has_update == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: write
