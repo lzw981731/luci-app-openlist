@@ -10,6 +10,8 @@ on:
         description: '鎸囧畾鐗堟湰鍙凤紙鐣欑┖鍒欒嚜鍔ㄦ娴嬫渶鏂扮増鏈級'
         required: false
         type: string
+  # 瀹氭椂妫€鏌ワ紙姣忓ぉ鍖椾含鏃堕棿 03:00锛?  schedule:
+    - cron: '0 19 * * *'
 
 env:
   UPSTREAM_REPO: lzw981731/OpenList
